@@ -5,17 +5,21 @@
 # This file is subject to the terms and conditions defined in the file 'LICENSE',
 # which is part of this source code package.
 
-import schedule
+"""Monitors subscriptions and loops over subscription AOIs to find new images."""
+
 import time
-from subscriptionUtils import check_and_notify  # Assuming check_and_notify is in subscManager.py
+import schedule
 import config
 
+from subscriptionUtils import check_and_notify  # Assuming check_and_notify is in subscManager.py
+
+
 def monitor_subscriptions():
-    # This function will be called periodically
+    """This function will be called periodically."""
     check_and_notify()
 
 def main():
-    # Run the search right away to help with debugging.    
+    """Run the search right away to help with debugging."""
     monitor_subscriptions()
 
     # Set up the period for the monitor.

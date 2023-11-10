@@ -5,6 +5,8 @@
 # This file is subject to the terms and conditions defined in the file 'LICENSE',
 # which is part of this source code package.
 
+from datetime import datetime
+
 import folium
 from folium import raster_layers
 import plotly.graph_objs as go
@@ -15,7 +17,7 @@ import pandas as pd
 from shapely.geometry import shape, box
 from geopy.distance import distance
 from shapely.ops import unary_union
-from datetime import datetime
+
 import logging
 from satellogicUtils import group_by_capture
 
@@ -42,11 +44,11 @@ def estimate_zoom_level(minx, miny, maxx, maxy):
     elif max_dim > 0.5:
         zoom_level = 10
     elif max_dim > 0.25:
-        zoom_level = 11 
+        zoom_level = 11
     elif max_dim > 0.125:
         zoom_level = 12
     elif max_dim > 0.0625:
-        zoom_level = 13 
+        zoom_level = 13
     else:
         zoom_level = 14
 
@@ -82,12 +84,12 @@ def create_bounding_box_choropleth(lat, lon, width=3):
     gdf = gpd.GeoDataFrame(df, geometry='geometry')
 
     # Create Plotly figure
-    fig = px.scatter_mapbox(df, 
-                            lat='lat', 
-                            lon='lon', 
+    fig = px.scatter_mapbox(df,
+                            lat='lat',
+                            lon='lon',
                             mapbox_style="carto-positron",
                             zoom=10)
-    
+
     # You could add bounding box as a choropleth layer if you like.
     # For now, just returning the center marker and the GeoJSON-like object.
 
@@ -106,16 +108,16 @@ def create_map(lat, lon, bbox):
     zoom_level = estimate_zoom_level(minx, miny, maxx, maxy)
     # print(zoom_level)
     m_obj = folium.Map(location=[lat, lon], zoom_start=zoom_level)
-    
+
     folium.Polygon(folium_coords, tooltip="Search Bounding Box").add_to(m_obj)  # Updated line
-  
+
     return m_obj
 
 def create_choropleth_map(lat, lon, bbox_geojson, fig=None):
     if fig is None:
         # Initialize a figure if it's not passed in
         fig = px.choropleth_mapbox(zoom=10, center=dict(lat=lat, lon=lon))
-        
+
     # Adding the bounding box
     coords = bbox_geojson['coordinates'][0]
     fig.add_shape(
@@ -127,7 +129,7 @@ def create_choropleth_map(lat, lon, bbox_geojson, fig=None):
         row=1,
         col=1
     )
-    
+
     # Adding the marker for the center point
     fig.add_trace(
         go.Scattermapbox(
@@ -144,7 +146,7 @@ def create_choropleth_map(lat, lon, bbox_geojson, fig=None):
         mapbox_zoom=9,
         mapbox_center={"lat": lat, "lon": lon}
     )
-    
+
     return fig
 
 def update_map_with_tiles(folium_map_obj, tiles_gdf, animation_filename, aoi_bbox):
@@ -168,13 +170,13 @@ def update_map_with_tiles(folium_map_obj, tiles_gdf, animation_filename, aoi_bbo
                     fill_opacity=0.01
                 ).add_to(folium_map_obj)
             else:
-                print(f'Unsupported geometry type: {geometry.geom_type}')  
-                exit()        
+                print(f'Unsupported geometry type: {geometry.geom_type}')
+                exit()
 
     # Calculate centroid of the bbox
     min_lon, min_lat, max_lon, max_lat = aoi_bbox.bounds
     centroid_lon = (min_lon + max_lon) / 2
-    centroid_lat = (min_lat + max_lat) / 2    
+    centroid_lat = (min_lat + max_lat) / 2
     # tooltip_html = f'<a href="file:///{animation_filename}" target="_blank">Open Animation</a>'
     popup_html = f'<a href="file:///{animation_filename}" target="_blank">Open Animation</a>'
     folium.Marker([centroid_lat, centroid_lon], popup_html, parse_html=True).add_to(folium_map_obj)
@@ -211,7 +213,7 @@ def process_multiple_points_choropleth(points, width):
         # Extract the traces from the new figure and add them to the "master" figure
         for trace in fig.data:
             master_fig.add_trace(trace)
-    
+
     # Calculate the "global" bounding box
     global_bbox = unary_union(all_aoi_shapes).bounds
     minx, miny, maxx, maxy = global_bbox
@@ -228,7 +230,7 @@ def process_multiple_points_choropleth(points, width):
             center=dict(lat=points[0]['lat'], lon=points[0]['lon']),
         )
     )
-    
+
     return master_fig, aois_list
 
 
@@ -236,7 +238,7 @@ def process_multiple_points_choropleth(points, width):
 def create_heatmap_for_age(aggregated_gdf):
     # Sort the GeoDataFrame based on data_age, so that less old squares are on top
     aggregated_gdf = aggregated_gdf.sort_values(by='data_age', ascending=False)
-    
+
     # Determine the center of your data to set the initial view of the map
     center = aggregated_gdf.geometry.unary_union.centroid
     start_coord = (center.y, center.x)
@@ -260,7 +262,7 @@ def create_heatmap_for_age(aggregated_gdf):
     for idx, row in aggregated_gdf.iterrows():
             # Scaling opacity: younger squares more opaque (0.8), older squares less opaque (0.4)
             opacity_scaled = 0.8 - ((row['data_age'] - data_age_min) / (data_age_max - data_age_min)) * 0.4
-    
+
             tooltip_text = f"Age: {row['data_age']}"
             tooltip = folium.Tooltip(tooltip_text)
             polygon = folium.Polygon(
@@ -283,7 +285,7 @@ def create_heatmap_for_age(aggregated_gdf):
 def create_heatmap_for_image_count(aggregated_gdf):
     # # Sort the GeoDataFrame based on image_count
     # aggregated_gdf = aggregated_gdf.sort_values(by='image_count', ascending=True)
-    
+
     # Check data as it comes in
     # Print the DataFrame columns
     print("DataFrame Columns:", aggregated_gdf.columns.tolist())
@@ -319,7 +321,7 @@ def create_heatmap_for_image_count(aggregated_gdf):
         tooltip_text = f"Image Count: {row['image_count']}"
         tooltip = folium.Tooltip(tooltip_text)
         # logging.warning(f"ToolTip: {tooltip_text}")
-        
+
         polygon = folium.Polygon(
             locations=[(y, x) for x, y in zip(row.geometry.exterior.xy[0], row.geometry.exterior.xy[1])],
             color=colormap(row['image_count']),
@@ -348,7 +350,7 @@ def create_heatmap_for_cloud(tiles_gdf, existing_fig=None):
     # Centroid of the entire scene to center the map
     centroid = tiles_gdf.dissolve().centroid[0]
 
-    
+
     # Create figure if not provided
     if existing_fig is None:
         fig = px.choropleth_mapbox(
@@ -374,28 +376,28 @@ def create_heatmap_for_cloud(tiles_gdf, existing_fig=None):
             z=tiles_gdf['eo:cloud_cover']
         )
         fig.add_trace(new_trace)
-    
+
     return fig
 
 def create_folium_basemap(capture_grouped_tiles_gdf):
     if capture_grouped_tiles_gdf.empty:
         logging.warning("No Tiles Found")
         return None
-    
+
     # Create a folium map
     center = capture_grouped_tiles_gdf.geometry.unary_union.centroid
     m = folium.Map(location=[center.y, center.x], zoom_start=8)
-    
+
     for idx, row in capture_grouped_tiles_gdf.iterrows():
         coords = [(y, x) for x, y in zip(*row.geometry.exterior.coords.xy)]
         # Create a tooltip using capture date and outcome_id
         tooltip_text = f"{row['capture_date'].strftime('%Y-%m-%dT%H%M%SZ')}, {row['outcome_id']}"
         tooltip = folium.Tooltip(tooltip_text)
         folium.Polygon(coords, color='blue', weight=1, tooltip=tooltip).add_to(m)
-        
+
         # Adding image overlay
         bounds = [list(row.geometry.bounds[1::-1]), list(row.geometry.bounds[3:1:-1])]
-        
+
         image_url = row["thumbnail_url"]
         raster_layers.ImageOverlay(image_url, bounds=bounds).add_to(m)
 
