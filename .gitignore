@@ -1,0 +1,35 @@
+# Python
+venv/
+config.py
+__pycache__/
+
+# These are are for catching invalid Tiles.
+invalid_outcome_ids/
+
+# These are private to be obtained from Google Developer Console.
+token*
+client_secret*
+
+# Logs
+log/
+
+# MAC OSX
+.DS_Store
+
+# Input-Output Files
+*.json
+*.geojson
+*.html
+*.HTML
+*.TIFF
+*.tiff
+*.PNG
+*.png
+*.GIF
+*.gif
+
+# Exclude Folders
+images/
+maps/
+search_results/
+points_to_monitor/
