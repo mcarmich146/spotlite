@@ -1,3 +1,10 @@
+# Copyright (c) 2023 Satellogic USA Inc. All Rights Reserved.
+#
+# This file is part of Spotlite.
+#
+# This file is subject to the terms and conditions defined in the file 'LICENSE',
+# which is part of this source code package.
+
 import os
 from geopy.geocoders import Nominatim
 import numpy as np

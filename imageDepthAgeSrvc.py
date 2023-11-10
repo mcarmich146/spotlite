@@ -1,3 +1,10 @@
+# Copyright (c) 2023 Satellogic USA Inc. All Rights Reserved.
+#
+# This file is part of Spotlite.
+#
+# This file is subject to the terms and conditions defined in the file 'LICENSE',
+# which is part of this source code package.
+
 import schedule
 import time
 from mapUtils import create_heatmap_for_age, create_heatmap_for_image_count
