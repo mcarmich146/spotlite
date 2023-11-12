@@ -29,6 +29,7 @@ def main():
     ensure_dir("maps")
     ensure_dir("invalid_outcome_ids")
     ensure_dir("search_results")
+    ensure_dir("points_to_monitor")
 
     # Setup Logging
     now = datetime.now().strftime("%d-%m-%YT%H%M%S")
