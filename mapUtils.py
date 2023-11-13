@@ -5,6 +5,7 @@
 # This file is subject to the terms and conditions defined in the file 'LICENSE',
 # which is part of this source code package.
 
+import config
 import folium
 from folium import raster_layers
 import plotly.graph_objs as go
@@ -18,6 +19,9 @@ from shapely.ops import unary_union
 from datetime import datetime
 import logging
 from satellogicUtils import group_by_capture
+import pyproj
+from pyproj.exceptions import CRSError
+from shapely import Point
 
 logger = logging.getLogger(__name__)
 
@@ -286,13 +290,13 @@ def create_heatmap_for_image_count(aggregated_gdf):
     
     # Check data as it comes in
     # Print the DataFrame columns
-    print("DataFrame Columns:", aggregated_gdf.columns.tolist())
+    # print("DataFrame Columns:", aggregated_gdf.columns.tolist())
 
     # Print the first row of the DataFrame
-    if not aggregated_gdf.empty:
-        print("First Row of Data:", aggregated_gdf.iloc[0].to_dict())
-    else:
-        print("The DataFrame is empty.")
+    # if not aggregated_gdf.empty:
+    #     print("First Row of Data:", aggregated_gdf.iloc[0].to_dict())
+    # else:
+    #     print("The DataFrame is empty.")
 
 
     # Keep only the latest tile for each grid code.
@@ -345,20 +349,34 @@ def create_heatmap_for_cloud(tiles_gdf, existing_fig=None):
     # Reset index to have 'id' as a column for px.choropleth_mapbox
     tiles_gdf.reset_index(inplace=True)
 
-    # Centroid of the entire scene to center the map
-    centroid = tiles_gdf.dissolve().centroid[0]
+    # Calculate the total bounds of the GeoDataFrame
+    minx, miny, maxx, maxy = tiles_gdf.total_bounds
 
-    
+    # Calculate the midpoint of the bounds
+    center_x = (maxx + minx) / 2
+    center_y = (maxy + miny) / 2
+
+    # Create a Point instance for the approximate centroid
+    centroid = Point(center_x, center_y)
+     
+    # Filter tiles by cloud cover
+    cloud_filtered_tiles_gdf = tiles_gdf[tiles_gdf['eo:cloud_cover'] <= config.CLOUD_THRESHOLD].copy()  # Added .copy() here
+
+    # Rest of your code remains the same
+    cloud_filtered_tiles_gdf.sort_values(by='data_age', ascending=True, inplace=True)
+
+    cloud_filtered_tiles_gdf.drop_duplicates(subset='grid:code', keep='first', inplace=True)
+
     # Create figure if not provided
     if existing_fig is None:
         fig = px.choropleth_mapbox(
-            tiles_gdf,
-            geojson=tiles_gdf.geometry.__geo_interface__,
-            locations=tiles_gdf.index,
+            cloud_filtered_tiles_gdf,
+            geojson=cloud_filtered_tiles_gdf.geometry.__geo_interface__,
+            locations=cloud_filtered_tiles_gdf.index,
             color="eo:cloud_cover",
             hover_data=["eo:cloud_cover"],
             center={'lat': centroid.y, 'lon': centroid.x},
-            zoom=9
+            zoom=8
         )
         fig.update_traces(marker_line_width=0)
         fig.update_layout(
@@ -369,12 +387,12 @@ def create_heatmap_for_cloud(tiles_gdf, existing_fig=None):
     else:
         fig = existing_fig
         new_trace = go.Choroplethmapbox(
-            geojson=tiles_gdf.geometry.__geo_interface__,
-            locations=tiles_gdf.index,
-            z=tiles_gdf['eo:cloud_cover']
+            geojson=cloud_filtered_tiles_gdf.geometry.__geo_interface__,
+            locations=cloud_filtered_tiles_gdf.index,
+            z=cloud_filtered_tiles_gdf['eo:cloud_cover']
         )
         fig.add_trace(new_trace)
-    
+
     return fig
 
 def create_folium_basemap(capture_grouped_tiles_gdf):

@@ -54,15 +54,15 @@ def main():
         #     9) Repeat
 
         print("Options:")
-        print("1. Search And Animate Site")
+        print("1. Search And Animate Site.")
         print("2. Search And Plot Images With Thumbnails.")
         print("3. Create Cloud Free Basemap.")
         print("4. Create Heat Map Of Collection Age.")
         print("5. Create Heatmap Of Imagery Depth.")
-        print("6. Download Tiles For BBox")
-        print("7. Manage Subscriptions")
-        print("8. Enter New Tasking")
-        print("9. Create Heat Map Of Cloud Cover For Area.")
+        print("6. Create Heat Map Of Cloud Cover For Area.")
+        print("7. Manage Subscriptions.")
+        print("8. Enter New Tasking.")
+        print("9. Download Tiles For BBox.")
         print("q. For Quit...")
         
         user_choice = input("Enter your choice: ")
@@ -307,7 +307,7 @@ def main():
             # aggregation_size_km = input("Set Heat Map Aggregation Size (km):")  # get this value from the user
             
             # Define the filepath for the pickle file
-            pickle_filepath = 'search_results\items_cache.pkl'
+            pickle_filepath = 'search_results/items_cache.pkl'
             
             # # Check if the pickle file exists
             # if os.path.exists(pickle_filepath):
@@ -331,7 +331,7 @@ def main():
                 logging.warning("No tiles found!")
                 continue
         
-        elif user_choice == '6': # Download Tiles For BBox
+        elif user_choice == '9': # Download Tiles For BBox
             place = input(f"Enter the place name or lat,lon in dec. deg.: ")
             lat, lon = get_lat_long_from_place(place)
             points = [{'lat': lat, 'lon': lon}]
@@ -470,7 +470,7 @@ def main():
                 continue
             
             continue
-        elif user_choice == '9': # Create for heat map for cloud cover for latest tiles.
+        elif user_choice == '6': # Create for heat map for cloud cover for latest tiles.
             # Open the file dialog to select the GeoJSON file
             print("Provide geojson polygon file.")
             root = tk.Tk()
@@ -498,7 +498,7 @@ def main():
             # aggregation_size_km = input("Set Heat Map Aggregation Size (km):")  # get this value from the user
             
             # Define the filepath for the pickle file
-            pickle_filepath = 'search_results\items_cache.pkl'
+            pickle_filepath = 'search_results/items_cache.pkl'
             
             # # Check if the pickle file exists
             # if os.path.exists(pickle_filepath):
@@ -515,9 +515,7 @@ def main():
                 pickle.dump((tiles_gdf, num_tiles, num_captures), file)
             
             if num_tiles > 0:
-                aggregated_tiles_gdf = setup_GDF(tiles_gdf)
-            
-                fig_obj = create_heatmap_for_cloud(aggregated_tiles_gdf)
+                fig_obj = create_heatmap_for_cloud(tiles_gdf)
                 if fig_obj:
 
                     fig_filename = f"maps/CloudCover_Heatmap_{now.strftime('%Y-%m-%d_%H-%M-%S')}.html"
