@@ -25,10 +25,11 @@ import re
 from geopy.distance import geodesic
 import config
 from concurrent.futures import ThreadPoolExecutor, as_completed
-# from skimage import io, exposure, color 
 from rasterio.transform import from_origin
 from rasterio.warp import reproject, Resampling
+import pyproj
 from pyproj import Transformer
+from pyproj.exceptions import CRSError
 from pathlib import Path
 from packaging import version
 import logging
@@ -201,10 +202,10 @@ def connect_to_archive():
     return archive
 
 # Function to split the date range into two-month chunks
-def date_range_chunks(start_date, end_date, chunk_size_months=1):
+def date_range_chunks(start_date, end_date, chunk_size_days=14):
     start = datetime.fromisoformat(start_date)
     end = datetime.fromisoformat(end_date)
-    delta = timedelta(days=chunk_size_months * 30)  # Roughly two months
+    delta = timedelta(days=chunk_size_days)  # Roughly two months
 
     while start < end:
         chunk_end = min(start + delta, end)
@@ -259,7 +260,7 @@ def search_archive(aoi, start_date, end_date):
     all_results = []
 
     # Use ThreadPoolExecutor to run searches in parallel
-    with ThreadPoolExecutor(max_workers=len(date_chunks)) as executor:
+    with ThreadPoolExecutor(max_workers=20) as executor:
         # Create a dictionary to hold futures
         future_to_date = {
             executor.submit(search_with_dates, aoi, chunk_start, chunk_end): (chunk_start, chunk_end)
@@ -278,11 +279,15 @@ def search_archive(aoi, start_date, end_date):
                 logger.error(f"Search for range {date_range} generated an exception: {exc}")
 
     all_gdfs = []
+    epsg_code = None
 
+    logger.info(f"Processing {len(all_results)} num of items groups")
     for items in all_results:
         if items and len(items) > 0:
-            gdf = setup_GDF(items)
+            # If first time through then epsg_code is None meaning to use whatever CRS is in that tile group
+            gdf = setup_GDF(items, epsg_code) 
             all_gdfs.append(gdf)
+            epsg_code = gdf.crs #set the epsg_code to the GDF.crs for future tile groups.
         else:
             # Option 1: Log the absence of data
             logger.debug("No items found for a date chunk, skipping...")
@@ -926,59 +931,130 @@ def print_invalid_outcome_ids():
 
     return True
 
-def setup_GDF(items):
+def setup_GDF(items, epsg_code_input=None):
     # Check if items is None or empty
     if items is None or len(items) == 0:
         logger.error("Error: Trying To Group Empty Items!")
         return False
-    
-    # Iterate through items to get the first item to confirm things are okay.
+        
+    # Check for the first item and its properties
     first_item = next(iter(items), None)
-    if first_item is None:
-        logger.error("Error: No items available to setup GeoDataFrame!")
+    if first_item is not None:
+        first_epsg_code_number = first_item.properties.get('proj:epsg', None)
+        first_epsg_code = f"epsg:{first_epsg_code_number}"
+        logger.info(f"epsg_code_input: {epsg_code_input}")
+        logger.info(f"first_epsg_code: {first_epsg_code}")
+    else:
+        print("The collection is empty.")
         return False
+
+    gdfs = []
+
+    # Convert the ItemCollection to a dictionary array and make sure the CRS is handled for all tiles.
+
+    for item in items:
+        epsg_code_number = item.properties.get('proj:epsg', None)
+        epsg_code = f"epsg:{epsg_code_number}"
+        # epsg_code = epsg_code_number
+        if not epsg_code:
+            logger.warning("'proj:epsg' not found in item's properties.")
+            continue
+        logger.info(f"epsg_code: {epsg_code}")
+        # if the epsg_code_input is set we should use it as the code otherwise use standard code WGS84.
+        if epsg_code_input is not None: # If a epsg code is provided as an arg
+            target_crs = epsg_code_input
+            logger.info(f"Using epsg_code_input: {epsg_code_input}")
+        else:
+            target_crs = first_epsg_code
+        # elif epsg_code != first_epsg_code: # If no epsg input arg and this tile's epsg_code is not the same as the first tile's epsg then we plan to override it to match.
+        #     target_crs = first_epsg_code
+        #     logger.warning(f"Using first_epsg_code: {first_epsg_code}")
+        # else: # If there is no Input epsg arg and the epsg_code is the same then we just use epsg_code, no change.
+        #     target_crs = epsg_code  
+        #     logger.warning(f"Using Existing EPSG Code: {epsg_code}")
+
+        feature = item.to_dict()
+        gdf = gpd.GeoDataFrame.from_features([feature], crs=f"{target_crs}")
+
+        # Reproject to standard CRS if different
+        # print(f"target_crs_str: {target_crs}")
+        # logger.info(f"GDF CRS: {gdf.crs}, Target_CRS: {target_crs}")
+        
+        # if gdf.crs.to_string() != target_crs:
+        #     logger.info(f"Tile transforming from {gdf.crs.to_string()} to {target_crs}")
+        #     # target_crs = Transformer(target_crs)
+        #     gdf = gdf.to_crs(target_crs)
+        #     logger.warning(f"CRS After Transformation: {gdf.crs.to_string()}")
+            
+
+        gdf['id'] = item.id
+        gdf['capture_date'] = pd.to_datetime(item.datetime)
+        gdf['capture_date'] = gdf['capture_date'].dt.tz_localize(None)
+        gdf['geometry'] = gdf['geometry'].apply(lambda x: x.buffer(0))
+        gdf['data_age'] = (datetime.utcnow() - gdf['capture_date']).dt.days  # Using utcnow
+        gdf['preview_url'] = item.assets["preview"].href
+        gdf['thumbnail_url'] = item.assets["thumbnail"].href
+        gdf['analytic_url'] = item.assets["analytic"].href
+        gdf['outcome_id'] = item.properties['satl:outcome_id']
+        gdf['valid_pixel_percent'] = item.properties['satl:valid_pixel']
+        
+        gdfs.append(gdf)
+
+    # Combine all reprojected GeoDataFrames
+    combined_gdf = pd.concat(gdfs, ignore_index=True)
+
+    # features = [item.to_dict() for item in items]
+    # gdf = gpd.GeoDataFrame.from_features(features, crs=f"epsg:{epsg_code}")
+
+    # # Additional processing, e.g., setting index and other columns
+    # gdf['id'] = [item.id for item in items]
+    # gdf.set_index('id', inplace=True)
+    # gdf['capture_date'] = [pd.to_datetime(item.datetime) for item in items]
     
-    gdf = gpd.GeoDataFrame.from_features(items.to_dict(), crs=f"epsg:{first_item.properties['proj:epsg']}")
-    gdf['id'] = [x.id for x in items]
-    gdf.set_index('id', inplace=True)
-    gdf['capture_date'] = [gpd.pd.to_datetime(f"{x[0]}T{x[1]}") for x in gdf.index.str.split("_")]
-    gdf['geometry'] = gdf['geometry'].apply(lambda x: x.buffer(0))  # this is because sometimes footprints are not valid polygons, it will be fixed.
-    gdf['data_age'] = (datetime.utcnow() - gdf['capture_date']).dt.days  # Using utcnow
-    # print(f"GDF Cols: {gdf.columns}")
+    # # Convert capture_date to timezone-naive (assuming it's in UTC)
+    # gdf['capture_date'] = gdf['capture_date'].dt.tz_localize(None)
+
+    # gdf['geometry'] = gdf['geometry'].apply(lambda x: x.buffer(0))
+
+    # # # Transform the GeoDataFrame to a standard CRS
+    # # standard_crs = "EPSG:4326"
+    # # gdf = gdf.to_crs(standard_crs)
+
+    # gdf['data_age'] = (datetime.utcnow() - gdf['capture_date']).dt.days  # Using utcnow
     
     # Count the number of tiles in each 'grid:code'
-    tile_counts = gdf['grid:code'].value_counts().reset_index()
+    tile_counts = combined_gdf['grid:code'].value_counts().reset_index()
     tile_counts.columns = ['grid:code', 'image_count']
 
     # Join this back to the original GeoDataFrame
-    gdf = pd.merge(gdf, tile_counts, on='grid:code', how='left')
+    combined_gdf = pd.merge(combined_gdf, tile_counts, on='grid:code', how='left')
     
-    # # Sort by age so that youngest tiles are last (and thus displayed on top)
-    # gdf.sort_values(by='data_age', ascending=False, inplace=True)
+    # # # Sort by age so that youngest tiles are last (and thus displayed on top)
+    # # gdf.sort_values(by='data_age', ascending=False, inplace=True)
 
-    # Create lists to hold the asset URLs
-    preview_urls = []
-    thumbnail_urls = []
-    analytic_urls = []
-    outcome_ids = []
-    valid_pixel_percents = []
+    # # Create lists to hold the asset URLs
+    # preview_urls = []
+    # thumbnail_urls = []
+    # analytic_urls = []
+    # outcome_ids = []
+    # valid_pixel_percents = []
 
-    # Loop through items to collect asset URLs
-    for item in items:
-        preview_urls.append(item.assets["preview"].href)
-        thumbnail_urls.append(item.assets["thumbnail"].href)
-        analytic_urls.append(item.assets["analytic"].href)
-        outcome_ids.append(item.properties['satl:outcome_id'])
-        valid_pixel_percents.append(item.properties['satl:valid_pixel'])
+    # # Loop through items to collect asset URLs
+    # for item in items:
+    #     preview_urls.append(item.assets["preview"].href)
+    #     thumbnail_urls.append(item.assets["thumbnail"].href)
+    #     analytic_urls.append(item.assets["analytic"].href)
+    #     outcome_ids.append(item.properties['satl:outcome_id'])
+    #     valid_pixel_percents.append(item.properties['satl:valid_pixel'])
 
-    # Add these lists as new columns in the GDF
-    gdf['preview_url'] = preview_urls
-    gdf['thumbnail_url'] = thumbnail_urls
-    gdf['analytic_url'] = analytic_urls
-    gdf['outcome_id'] = outcome_ids
-    gdf['valid_pixel_percent'] = valid_pixel_percents
+    # # Add these lists as new columns in the GDF
+    # gdf['preview_url'] = preview_urls
+    # gdf['thumbnail_url'] = thumbnail_urls
+    # gdf['analytic_url'] = analytic_urls
+    # gdf['outcome_id'] = outcome_ids
+    # gdf['valid_pixel_percent'] = valid_pixel_percents
     
-    return gdf
+    return combined_gdf
 
 def group_by_capture(gdf):
     # Grouping the data
@@ -1004,7 +1080,7 @@ def create_cloud_free_basemap(tiles_gdf):
 
     # Filter by cloud coverage and valid pixel percentage
     cloud_filtered_tiles_gdf = tiles_gdf[(tiles_gdf['eo:cloud_cover'] <= config.CLOUD_THRESHOLD) & 
-                                         (tiles_gdf['valid_pixel_percent'] >= config.VALID_PIXEL_PERCENT_FOR_BASEMAP)]
+                                         (tiles_gdf['valid_pixel_percent'] >= config.VALID_PIXEL_PERCENT_FOR_BASEMAP)].copy()
 
     #
     # Sort by capture date
