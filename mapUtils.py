@@ -151,7 +151,7 @@ def create_choropleth_map(lat: float,
 
     if fig is None:
         # Initialize a figure if it's not passed in
-        fig = px.choropleth_mapbox(zoom=10, center=dict(lat=lat, lon=lon))
+        fig = px.choropleth_mapbox(zoom=10, center={"lat": lat, "lon": lon})
 
     # Adding the bounding box
     coords = bbox_geojson['coordinates'][0]
