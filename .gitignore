@@ -23,6 +23,15 @@ log/
 # MAC OSX
 .DS_Store
 
+# Obsidian
+.obsidian/
+
+# VS Code
+.vscode/
+
+# Doxygen
+docs/html/
+
 # Input-Output Files
 *.json
 *.geojson

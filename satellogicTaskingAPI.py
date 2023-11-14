@@ -23,14 +23,14 @@ KEY_SECRET = config.KEY_SECRET #please insert your API credentials here
 TASKS_URL = 'https://api.satellogic.com/tasking/tasks/'
 PRODUCTS_URL = 'https://api.satellogic.com/tasking/products/'
 CLIENTS_URL = 'https://api.satellogic.com/tasking/clients/'
-DOWNLOAD_URL = 'https://api.satellogic.com/telluric/scenes/'  
+DOWNLOAD_URL = 'https://api.satellogic.com/telluric/scenes/'
 HEADERS = {"authorizationToken":f"Key,Secret {KEY_ID},{KEY_SECRET}"}
 
 def query_available_tasking_products(): # Validated
     try:
         # Use api_call to get the JSON response
         response_json = api_call(PRODUCTS_URL)
-        
+
         # If the DataFrame contains data, return it
         if response_json is not None and not response_json.empty:
             return response_json
@@ -40,9 +40,9 @@ def query_available_tasking_products(): # Validated
     except Exception as e:
         print(f"An error occurred: {e}")
         return None
-        
+
     # Products are defined by product id. Please find below a list of all available products.
-    # Product 169: 'Multispectral 70cm' is Multispectral 70cm Super resolution image also centered around a pair of coordinates  (POI only, 5x10km)    
+    # Product 169: 'Multispectral 70cm' is Multispectral 70cm Super resolution image also centered around a pair of coordinates  (POI only, 5x10km)
 
 def check_account_config(): # Validated
     try:
@@ -60,7 +60,8 @@ def check_account_config(): # Validated
         return None
 
 def query_tasking_products_by_status(status=""): #Validated
-    # Validate the status input and set the statusparams accordingly
+    """Validate the status input and set the statusparams accordingly."""
+
     valid_statuses = ["completed", "failed", "rejected", "received"]
     if status in valid_statuses:
         statusparams = {"status": status}
@@ -72,7 +73,7 @@ def query_tasking_products_by_status(status=""): #Validated
     try:
         # Use api_call to get the JSON response
         response_json = api_call(TASKS_URL, params=statusparams)
-        
+
         # If the DataFrame contains data, return it
         if response_json is not None and not response_json.empty:
             return response_json
@@ -88,13 +89,13 @@ def map_desired_tasking_location(lat, lon):
     # Create map and add task location
     mp = folium.Map(location=[lat, lon], tiles="CartoDB dark_matter", zoom_start=13)
     folium.Marker([lat, lon]).add_to(mp)
-    
+
     # Save the map to an HTML file
     now = datetime.now().strftime("%Y%m%d_%H%M%S")
-    map_filename = f'images/Tasking_Map_{now}.html' 
+    map_filename = f'images/Tasking_Map_{now}.html'
     os.makedirs(os.path.dirname(map_filename), exist_ok=True)
     mp.save(map_filename)
-    
+
     # Open the HTML file in the default web browser
     webbrowser.open('file://' + os.path.realpath(map_filename))
 
@@ -148,18 +149,18 @@ def get_input(prompt, validation_func=None, default_value=None):
 
 def gather_task_inputs():
     # Gather inputs from the user or allow for defaults
-    now = datetime.now().strftime('%Y%m%d_%H%M%S')  
+    now = datetime.now().strftime('%Y%m%d_%H%M%S')
     project_name = get_input("Enter the project name:", default_value=f"API_Testing")
     task_name = get_input("Enter the task name:", default_value=f"API_Task_{now}")
 
     product = int(get_input("Enter the product number (169):", validation_func=lambda x: x.isdigit(), default_value="169"))
     max_captures = int(get_input("Enter the maximum number of captures (1):", validation_func=lambda x: x.isdigit(), default_value="1"))
     expected_age = get_input("Enter the expected age (7 days, 00:00:00):", validation_func=validate_expected_age, default_value="7 days, 00:00:00")
-    
+
     print("Enter the target coordinates (lat/long, dec deg):")
     lat_lon = input("Enter the latitude and longitude (format: lat,lon): ")
     lat, lon = map(float, lat_lon.split(','))  # This will split the input string into lat and lon, and convert them to floats
-    
+
     now = datetime.utcnow().strftime('%Y-%m-%dT%H:%M:%SZ')  # Get the current UTC date and time in the desired format
     one_month_later = (datetime.utcnow() + relativedelta(months=1)).strftime('%Y-%m-%dT%H:%M:%SZ')  # Get the date and time one month later in the desired format
 
@@ -252,30 +253,30 @@ def query_and_download_image(scene_set_id, download_dir="images"):
         # Use api_call to get the JSON response
         response_df = api_call(DOWNLOAD_URL, method=method, params=SSIDparams)
         print(f"Response: {response_df}")
-        
+
         # # Write the DataFrame to a JSON file for debugging
         # response_df.to_json('maps/response.json', orient='split', indent=4)
-    
+
         # Extract the 'attachments' list of dictionaries from the first row
         attachments = response_df.iloc[0]['attachments']
 
         # Find the attachment with 'name' as 'delivery_zip'
         delivery_zip_attachment = next(att for att in attachments if att['name'] == 'delivery_zip')
-        
+
         # Get the URL and file_name from the found attachment
         url = delivery_zip_attachment['url']
         file_name = delivery_zip_attachment['file_name']
-        
+
         # Create the full file path
         file_path = os.path.join(download_dir, file_name)
-        
+
         # Download the zip file
         urllib.request.urlretrieve(url, file_path)
 
         print(f"Downloaded: {file_name}")
         print(f"URL: {url}")
         return file_name
-           
+
     except Exception as e:
         print(f"An error occurred while querying and downloading data: {e}")
         return None
@@ -343,4 +344,3 @@ def api_call(url, method="GET", params=None, json_data=None):
     except requests.RequestException as e:
         print(f"API request failed: {e}")
         return None
-    
