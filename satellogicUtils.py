@@ -288,6 +288,7 @@ def search_archive(aoi, start_date, end_date):
             gdf = setup_GDF(items, epsg_code) 
             all_gdfs.append(gdf)
             epsg_code = gdf.crs #set the epsg_code to the GDF.crs for future tile groups.
+            logger.info(f"Using EPSG:{epsg_code} for all tiles.")
         else:
             # Option 1: Log the absence of data
             logger.debug("No items found for a date chunk, skipping...")
@@ -942,8 +943,8 @@ def setup_GDF(items, epsg_code_input=None):
     if first_item is not None:
         first_epsg_code_number = first_item.properties.get('proj:epsg', None)
         first_epsg_code = f"epsg:{first_epsg_code_number}"
-        logger.info(f"epsg_code_input: {epsg_code_input}")
-        logger.info(f"first_epsg_code: {first_epsg_code}")
+        # logger.info(f"epsg_code_input: {epsg_code_input}")
+        # logger.info(f"first_epsg_code: {first_epsg_code}")
     else:
         print("The collection is empty.")
         return False
@@ -955,15 +956,15 @@ def setup_GDF(items, epsg_code_input=None):
     for item in items:
         epsg_code_number = item.properties.get('proj:epsg', None)
         epsg_code = f"epsg:{epsg_code_number}"
-        # epsg_code = epsg_code_number
+        
         if not epsg_code:
             logger.warning("'proj:epsg' not found in item's properties.")
             continue
-        logger.info(f"epsg_code: {epsg_code}")
+        # logger.info(f"epsg_code: {epsg_code}")
         # if the epsg_code_input is set we should use it as the code otherwise use standard code WGS84.
         if epsg_code_input is not None: # If a epsg code is provided as an arg
             target_crs = epsg_code_input
-            logger.info(f"Using epsg_code_input: {epsg_code_input}")
+            # logger.info(f"Using epsg_code_input: {epsg_code_input}")
         else:
             target_crs = first_epsg_code
         # elif epsg_code != first_epsg_code: # If no epsg input arg and this tile's epsg_code is not the same as the first tile's epsg then we plan to override it to match.
