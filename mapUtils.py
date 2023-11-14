@@ -7,7 +7,7 @@
 
 """Folium-based map utilities for creating heatmaps for cloud coverage, age of data, etc."""
 
-from typing import Tuple, Dict, Optional, List
+from typing import Tuple, Dict, Optional, List, Type
 import sys
 from datetime import datetime
 
@@ -28,7 +28,7 @@ from geopy.distance import distance
 
 from shapely import Point
 from shapely.ops import unary_union
-from shapely.geometry import shape, box
+from shapely.geometry import shape, box, Polygon
 
 from satellogicUtils import group_by_capture
 
@@ -72,7 +72,7 @@ def estimate_zoom_level(minx, miny, maxx, maxy):
 
 def create_bounding_box(center_lat: float,
                         center_lon: float,
-                        width_km: float = 3) -> Tuple[float, float, float, float]:
+                        width_km: float = 3) -> Type[Polygon]:  # Tuple[float, float, float, float]:
     """Create bounding box based on center and width."""
 
     # Calculate the height based on the width to maintain a 16:9 aspect ratio.
@@ -143,49 +143,65 @@ def create_map(lat: float, lon: float, bbox: Tuple[float, float, float, float]) 
     return m_obj
 
 
-def create_choropleth_map(lat: float,
-                          lon: float,
-                          bbox_geojson: Dict,
-                          fig: Optional[go.Figure] = None) -> go.Figure:
-    """Create thematic map to represent statistical data with shaded regions."""
+# TODO - remove
+# def create_choropleth_map(lat: float,
+#                           lon: float,
+#                           bbox_geojson: Dict,
+#                           fig: Optional[go.Figure] = None) -> go.Figure:
+#     """Create thematic map to represent statistical data with shaded regions."""
 
-    if fig is None:
-        # Initialize a figure if it's not passed in
-        fig = px.choropleth_mapbox(zoom=10, center={"lat": lat, "lon": lon})
+#     if fig is None:
+#         # Initialize a figure if it's not passed in
+#         fig = px.choropleth_mapbox(zoom=10, center={"lat": lat, "lon": lon})
 
-    # Adding the bounding box
-    coords = bbox_geojson['coordinates'][0]
-    fig.add_shape(
-        go.layout.Shape(
-            type='polygon',
-            coordinates=coords,
-            line={ "width": 2 }
-        ),
-        row=1,
-        col=1
-    )
+#     # TODO - remove
+#     #  Adding the bounding box
+#     # coords = bbox_geojson['coordinates'][0]
+#     # fig.add_shape(
+#     #     go.layout.Shape(
+#     #         type='polygon',
+#     #         coordinates=coords,
+#     #         line={ "width": 2 }
+#     #     ),
+#     #     row=1,
+#     #     col=1
+#     # )
+#     coords = bbox_geojson['coordinates'][0]
+#     path = 'M ' + ' L '.join([f'{lon}, {lat}' for lat, lon in coords]) + ' Z'
+#     fig.add_shape(
+#         go.layout.Shape(
+#             type='path',
+#             path=path,
+#             line={ "width": 2 }
+#         ),
+#         row=1,
+#         col=1
+#     )
 
-    # Adding the marker for the center point
-    fig.add_trace(
-        go.Scattermapbox(
-            lat=[lat],
-            lon=[lon],
-            mode='markers',
-            marker=go.scattermapbox.Marker(size=14, color='red')
-        )
-    )
+#     # Adding the marker for the center point
+#     fig.add_trace(
+#         go.Scattermapbox(
+#             lat=[lat],
+#             lon=[lon],
+#             mode='markers',
+#             marker=go.scattermapbox.Marker(size=14, color='red')
+#         )
+#     )
 
-    # General update to layout
-    fig.update_layout(
-        mapbox_style='carto-positron',
-        mapbox_zoom=9,
-        mapbox_center={"lat": lat, "lon": lon}
-    )
+#     # General update to layout
+#     fig.update_layout(
+#         mapbox_style='carto-positron',
+#         mapbox_zoom=9,
+#         mapbox_center={"lat": lat, "lon": lon}
+#     )
 
-    return fig
+#     return fig
 
 
-def update_map_with_tiles(folium_map_obj: folium.Map, tiles_gdf, animation_filename, aoi_bbox) -> folium.Map:
+def update_map_with_tiles(folium_map_obj: folium.Map,
+                          tiles_gdf: gpd.GeoDataFrame,
+                          animation_filename: str,
+                          aoi_bbox: Polygon) -> folium.Map:
     """Update a map with new folium polygon objects."""
 
     if tiles_gdf.empty:
@@ -218,12 +234,13 @@ def update_map_with_tiles(folium_map_obj: folium.Map, tiles_gdf, animation_filen
     # tooltip_html = f'<a href="file:///{animation_filename}" target="_blank">Open Animation</a>'
     popup_html = f'<a href="file:///{animation_filename}" target="_blank">Open Animation</a>'
     folium.Marker([centroid_lat, centroid_lon], popup_html, parse_html=True).add_to(folium_map_obj)
+
     return folium_map_obj
 
 
 def process_multiple_points_to_bboxs(
-        points: List[Dict(str, float)],
-        width: float) -> Tuple[folium.Map, List[Tuple[float, float, float, float]]]:
+        points: List[Dict[str, float]],
+        width: float) -> Tuple[folium.Map, List[Polygon]]:
     """Add bounding boxes to a list of search areas.
 
     Returns both the master map and a list of a AOIs.
