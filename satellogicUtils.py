@@ -293,6 +293,10 @@ def search_archive(aoi, start_date, end_date):
             # Option 1: Log the absence of data
             logger.debug("No items found for a date chunk, skipping...")
 
+    if len(all_gdfs) == 0:
+        logger.warning("No data found for search.")
+        return None, 0, 0
+    
     # Combine all GeoDataFrames into one
     combined_gdf = pd.concat(all_gdfs, ignore_index=True)
 

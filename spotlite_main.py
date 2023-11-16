@@ -114,7 +114,10 @@ def main():
             for index, aoi in enumerate(aois_list):
                 logging.info(f"Processing AOI #: {index+1}")
                 tiles_gdf, num_tiles, num_captures = search_archive(aoi, start_date, end_date)
-                                                
+
+                if tiles_gdf is None or tiles_gdf.empty: # This means nothing was found.
+                    continue
+
                 if num_tiles >0:
                     if 'eo:cloud_cover' not in tiles_gdf.columns:
                         logging.warning(f"Column 'eo:cloud_cover' doesn't exist for this AOI, skipping.")
@@ -179,6 +182,9 @@ def main():
             # Search The Archive
             tiles_gdf, num_tiles, num_captures = search_archive(heatmap_aoi, search_start_date, search_end_date)
             
+            if tiles_gdf is None or tiles_gdf.empty: # This means nothing was found.
+                continue
+
             logging.warning(f"Search complete! Num Tiles: {num_tiles}, Num Captures: {num_captures}")
             
             if num_tiles > 0:                
@@ -318,6 +324,10 @@ def main():
             # else:
             # Fetch data and save to a pickle file
             tiles_gdf, num_tiles, num_captures = search_archive(heatmap_aoi, search_start_date, search_end_date)
+            
+            if tiles_gdf is None or tiles_gdf.empty: # This means nothing was found.
+                continue
+
             with open(pickle_filepath, 'wb') as file:
                 pickle.dump((tiles_gdf, num_tiles, num_captures), file)
             logging.warning(f"Search complete! Num Tiles: {num_tiles}, Num Captures: {num_captures}")
@@ -360,7 +370,10 @@ def main():
             for index, aoi in enumerate(aois_list):
                 logging.info(f"Processing AOI #: {index+1}")
                 tiles_gdf, num_tiles, num_captures = search_archive(aoi, start_date, end_date)
-                               
+                
+                if tiles_gdf is None or tiles_gdf.empty: # This means nothing was found.
+                    continue
+
                 if num_tiles >0:
                     # We want to save the tiles into their respective captures to then animate them.
                     logging.warning(f"Total Captures: {num_captures}, Total Tiles: {num_tiles}.")
@@ -410,6 +423,10 @@ def main():
             # else:
             # Fetch data and save to a pickle file
             tiles_gdf, num_tiles, num_captures = search_archive(heatmap_aoi, search_start_date, search_end_date)
+            
+            if tiles_gdf is None or tiles_gdf.empty: # This means nothing was found.
+                continue
+
             # with open(pickle_filepath, 'wb') as file:
             #     pickle.dump((tiles_gdf, num_tiles, num_captures), file)
             logging.warning(f"Search complete! Num Tiles: {num_tiles}, Num Captures: {num_captures}")
@@ -451,6 +468,9 @@ def main():
 
             # Search The Archive
             tiles_gdf, num_tiles, num_captures = search_archive(heatmap_aoi, search_start_date, search_end_date)
+            
+            if tiles_gdf is None or tiles_gdf.empty: # This means nothing was found.
+                continue
             
             logging.warning(f"Search complete! Num Tiles: {num_tiles}, Num Captures: {num_captures}")
             
@@ -509,6 +529,10 @@ def main():
             # else:
             # Fetch data and save to a pickle file
             tiles_gdf, num_tiles, num_captures = search_archive(heatmap_aoi, search_start_date, search_end_date)
+            
+            if tiles_gdf is None or tiles_gdf.empty: # This means nothing was found.
+                continue
+            
             logging.warning(f"Search complete! Num Tiles: {num_tiles}, Num Captures: {num_captures}")
             
             with open(pickle_filepath, 'wb') as file:
