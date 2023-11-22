@@ -49,3 +49,9 @@ images/
 maps/
 search_results/
 points_to_monitor/
+
+# Exclude Test Files
+*test*
+
+#Exclude Package .egg-info files
+spotlite.egg-info/

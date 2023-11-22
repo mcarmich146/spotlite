@@ -331,12 +331,6 @@ def create_heatmap_for_age(aggregated_gdf: Dict) -> folium.Map:
     # Create the folium map
     m = folium.Map(location=start_coord, zoom_start=10)
 
-    # Iterate through the GeoDataFrame and add each geometry as a folium Polygon
-    # for idx, row in aggregated_gdf.iterrows():
-    #     polygon = folium.Polygon(locations=[(y, x) for x, y in zip(row.geometry.exterior.xy[0],
-    #                                                                row.geometry.exterior.xy[1])],
-    #                              color=colormap(row['data_age']),
-    #                              fill=True).add_to(m)
     for idx, row in aggregated_gdf.iterrows():
         # Scaling opacity: younger squares more opaque (0.8), older squares less opaque (0.4)
         opacity_scaled = 0.8 - \
@@ -367,19 +361,6 @@ def create_heatmap_for_age(aggregated_gdf: Dict) -> folium.Map:
 
 def create_heatmap_for_image_count(aggregated_gdf: Dict) -> folium.Map:
     """Creates a heat map based on quantity of available data using a linear color map."""
-
-    # # Sort the GeoDataFrame based on image_count
-    # aggregated_gdf = aggregated_gdf.sort_values(by='image_count', ascending=True)
-
-    # Check data as it comes in
-    # Print the DataFrame columns
-    # print("DataFrame Columns:", aggregated_gdf.columns.tolist())
-
-    # Print the first row of the DataFrame
-    # if not aggregated_gdf.empty:
-    #     print("First Row of Data:", aggregated_gdf.iloc[0].to_dict())
-    # else:
-    #     print("The DataFrame is empty.")
 
     # Keep only the latest tile for each grid code.
     # Since they are sorted by age with the youngest last, we can drop duplicates except for the last one.
@@ -506,6 +487,7 @@ def create_folium_basemap(capture_grouped_tiles_gdf: Dict) -> folium.Map:
         bounds = [list(row.geometry.bounds[1::-1]), list(row.geometry.bounds[3:1:-1])]
 
         image_url = row["thumbnail_url"]
+        # logger.debug(f"Thumbnail image_url: {image_url}")
         raster_layers.ImageOverlay(image_url, bounds=bounds).add_to(m)
 
     return m
