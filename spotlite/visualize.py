@@ -172,11 +172,11 @@ class Visualizer:
             ).add_to(m)
 
         m.add_child(colormap)  # Add the color map legend
-        now = datetime.now().strftime("%h-%m-%dT%H%M%SZ")
+
+        now = datetime.now()
         if out_filename is None:
-            out_filename = f'maps/Heatmap_Image_Age_{now}.html'
-        m.save(out_filename)
-        logger.warning(out_filename)
+            out_filename = f"maps/ImageAge_Heatmap_{now.strftime('%Y-%m-%d_%H-%M-%S')}.html"
+        m.save(out_filename)  # Save to an HTML file
 
         return m
 
@@ -190,7 +190,7 @@ class Visualizer:
         tiles_gdf = tiles_gdf.drop_duplicates(subset='grid:code', keep='last')
 
         # Sort by age so that youngest tiles are last (and thus displayed on top)
-        tiles_gdf.sort_values(by='data_age', ascending=False, inplace=True)
+        tiles_gdf = tiles_gdf.sort_values(by='data_age', ascending=False)
 
         # Determine the center of your data to set the initial view of the map
         center = tiles_gdf.geometry.unary_union.centroid
@@ -222,12 +222,11 @@ class Visualizer:
             ).add_to(m)
 
         m.add_child(colormap)  # Add the color map legend
-        now = datetime.now().strftime("%h-%m-%dT%H%M%SZ")
+        now = datetime.now()
         if out_filename is None:
-            out_filename = f'maps/Heatmap_Image_Count_{now}.html'
+            out_filename = f"maps/ImageCount_Heatmap_{now.strftime('%Y-%m-%d_%H-%M-%S')}.html"
         m.save(out_filename)  # Save to an HTML file
-        logger.warning(out_filename)
-
+        
         return m
 
     def cloud_heatmap(self, tiles_gdf: Dict, existing_fig: go.Figure = None, out_filename: str = None) -> go.Figure:
@@ -285,10 +284,10 @@ class Visualizer:
             )
             fig.add_trace(new_trace)
 
-        now = datetime.now().strftime("%h-%m-%dT%H%M%SZ")
+        now = datetime.now()
         if out_filename is None:
-            out_filename = f"maps/Choropleth_Map_{now.strftime('%Y-%m-%d_%H-%M-%S')}.html"
-                
+            out_filename = f"maps/CloudCover_Heatmap_{now.strftime('%Y-%m-%d_%H-%M-%S')}.html"
+
         fig.write_html(out_filename)
         return fig
 
@@ -335,51 +334,41 @@ class Visualizer:
 
     def create_folium_map(
             self,
-            points: List[Dict[str, float]],
-            aois: List[Polygon]) -> Tuple[folium.Map, List[Polygon]]:
-        """Create a folium map and add all markers and aois."""
+            points: List[Point],
+            aois: List[Polygon]
+        ) -> folium.Map:
+        """Create a folium map and add all markers and AOIs."""
 
-        # Set initial location
-        master_map = folium.Map(
-            location=[points[0]['lat'], points[0]['lon']], zoom_start=8)
+        if not points:
+            raise ValueError("Points list is empty")
+
+        # Set initial location using the first point's coordinates
+        initial_lon, initial_lat = points[0].x, points[0].y
+        master_map = folium.Map(location=[initial_lat, initial_lon], zoom_start=8)
         
-        for index, point in enumerate(points):
-            lat, lon = point['lat'], point['lon']
-            
-            json_coords = aois[index].__geo_interface__
-            coords = json_coords['coordinates'][0]
-            folium_coords = [list(coord)[::-1] for coord in coords]  # Flip lon and lat for each coordinate
+        for aoi in aois:
+            # Create a folium Polygon from AOI and add it to the map
+            folium.Polygon(
+                locations=[(x, y) for x, y in aoi.exterior.coords],
+                tooltip="Search Bounding Box"
+            ).add_to(master_map)
 
-            # Get the bounds of the AOI polygon
-            polygon_shape = shape(json_coords)
-            minx, miny, maxx, maxy = polygon_shape.bounds
-            zoom_level = self._estimate_zoom_level(minx, miny, maxx, maxy)
-            
-            m_obj = folium.Map(location=[lat, lon], zoom_start=zoom_level)
-
-            folium.Polygon(folium_coords, tooltip="Search Bounding Box").add_to(m_obj) 
-
-            for feature in m_obj._children.values():
-                # Add each feature from the individual map to the master map
-                master_map.add_child(feature)
-
-        # Return both the master map and the list of AOIs
         return master_map
 
     def create_choropleth_map(self, aois: List[Polygon]) -> go.Figure:
         """Initialize the 'master' Plotly figure."""
-
         master_fig = go.Figure()
         all_aoi_shapes = []  # List to keep track of all AOI shapes
 
         for aoi in aois:
-            # Create a DataFrame for Plotly Express
-            df = pd.DataFrame({'geometry': [aoi]})
-            
+            # Extract centroid coordinates and create a DataFrame
+            centroid = aoi.centroid
+            df = pd.DataFrame({'lat': [centroid.y], 'lon': [centroid.x]})
+
             # Create Plotly figure for each AOI
             fig = px.scatter_mapbox(df,
-                                    lat='geometry.centroid.y',
-                                    lon='geometry.centroid.x',
+                                    lat='lat',
+                                    lon='lon',
                                     mapbox_style="carto-positron",
                                     zoom=8)
 
@@ -697,7 +686,7 @@ class Visualizer:
 
         return most_recent_cloud_free_tiles 
 
-    def create_folium_basemap(capture_grouped_tiles_gdf: Dict) -> folium.Map:
+    def create_folium_basemap(self, capture_grouped_tiles_gdf: Dict) -> folium.Map:
         """Create folium basemap as starting point for further updates with heatmaps."""
 
         if capture_grouped_tiles_gdf.empty:

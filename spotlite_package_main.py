@@ -7,6 +7,7 @@
 
 import datetime
 from satellogicUtils import get_lat_long_from_place, ensure_dir
+from satellogicTaskingAPI import gather_task_inputs
 from datetime import datetime
 from dateutil.relativedelta import relativedelta
 import webbrowser
@@ -36,9 +37,7 @@ def main():
 
     place = ""
 
-    searcher = Searcher()
-    searcher.key_id = config.KEY_ID
-    searcher.key_secret = config.KEY_SECRET
+    searcher = Searcher(config.KEY_ID, config.KEY_SECRET)
     visualizer = Visualizer()
     tasker = TaskingManager(config.KEY_ID, config.KEY_SECRET)
 
@@ -47,10 +46,10 @@ def main():
         print("1. Search And Animate Site.")
         print("2. Search And Plot Images With Thumbnails.")
         print("3. Create Cloud Free Basemap.")
-        print("4. Create Heat Map Of Collection Age.")
+        print("4. Create Heatmap Of Collection Age.")
         print("5. Create Heatmap Of Imagery Depth.")
-        print("6. Create Heat Map Of Cloud Cover For Area.")
-        print("7. Deleted - Subscriptions.")
+        print("6. Create Heatmap Of Cloud Cover.")
+        # print("7. Deleted - Subscriptions.")
         print("8. Enter New Tasking.")
         print("9. Download Tiles For BBox.")
         print("q. For Quit...")
@@ -94,8 +93,8 @@ def main():
             logging.info(f"Date Range For Search: {start_date} - {end_date}")
             
             # For the list of points create a map with all of the points and bounding boxes on it.
-            aois_list = searcher.create_aois_from_points(points, width)
-            master_map = visualizer.create_folium_map(points, aois_list)
+            aois_list, points_list = searcher.create_aois_from_points(points, width)
+            master_map = visualizer.create_folium_map(points_list, aois_list)
             fig_obj = visualizer.create_choropleth_map(aois_list)
             
             # Loop through the bbox aois and search and append the results to the map.
@@ -128,7 +127,7 @@ def main():
                                 continue
                         
                         master_map = visualizer.update_map_with_tiles(master_map, tiles_gdf, animation_filename, aoi)
-                        fig_obj = visualizer.cloud_heatmap(tiles_gdf, fig_obj)
+                        # fig_obj = visualizer.cloud_heatmap(tiles_gdf, fig_obj)
 
             if master_map:
                 master_map_filename = f"maps/Search_Results_Map_{now.strftime('%Y-%m-%d_%H-%M-%S')}.html"
@@ -186,40 +185,56 @@ def main():
             while True:
                 print("Manage Taskings:")
                 print("1. Create New Tasking Via API") # Validated
-                print("2. Check Status of Task") # Validated
-                print("3. Cancel Task") # Validated
-                print("4. Query and Download Image") #Validated
+                print("2. Check Status For TaskID ") # Validated
+                print("3. Cancel Task For TaskID") # Validated
+                print("4. Query and Download Image For ScenesetID") #Validated
                 print("5. Check Client Config.") # Validated
                 print("6. Search Products By Status.") # Validated
                 print("7. Check Available Product List.") #Validated
+                print("8. List Captures For TaskID.") #Validated
                 print("q. Back to main menu.")
                 sub_choice = input("Enter your choice: ")
 
                 if sub_choice == '1':  # Create new tasking via API
-                    tasking_df = tasker.create_new_tasking()
+
+                    task_params = gather_task_inputs()
+                    
+                    tasking_df = tasker.create_new_tasking(task_params)
                     print(f"Tasking Result: {tasking_df}")
                     continue
                 elif sub_choice == '2': # Check status of task
-                    task_id = input("Specify Task Id: ")
-                    print(f"Status: {tasker.check_task_status(task_id)}")
+                    task_id = input("Enter Task Id: ")
+                    print(f"Status: {tasker.task_status(task_id)}")
                     continue
                 elif sub_choice == '3': # cancel_task
-                    task_id = input("Specify Task Id: ")
+                    task_id = input("Enter Task Id: ")
                     print(f"Status: {tasker.cancel_task(task_id)}")
                     continue
                 elif sub_choice == '4': # query_and_download_image
-                    scene_set_id = input("SceneSetID?: ")
-                    download_dir = input("Target Relative Download Directory? (images):") or "images"
-                    print(f"Downloaded Image Filename: {tasker.query_and_download_image(scene_set_id, download_dir)}")
+                    scene_set_id = input("Enter SceneSetID?: ")
+                    download_dir = input("Target Relative Download Directory? (images):") or None
+                    print(f"Downloaded Image Filename: {tasker.download_image(scene_set_id, download_dir)}")
                     continue
                 elif sub_choice == '5': # Check Client Config
                     print(f"Client Config: {tasker.check_account_config()}")
                 elif sub_choice == '6': # Search products by status.
-                    df = tasker.query_tasking_products_by_status("completed")
-                    print(f"Completed Products: {df}")
+                    status = input("Provide Status To Query [ALL]: ") or ""
+                    df = tasker.query_tasks_by_status(status)
+                    print(f"Product Columns: {df.columns}")
+                    print(f"Products Result: {df}")
                 elif sub_choice == '7': # Check available products list.
                     df = tasker.query_available_tasking_products()
                     print(f"Availble Products: \n{df}")
+                elif sub_choice == '8': # Check captures for task_id
+                    task_id = input("Provide task_id: ")
+                    if task_id:
+                        response_json = tasker.capture_list(task_id)
+                        if response_json is not None and 'capture_id' in response_json.columns:
+                            for idx, row in response_json.iterrows():
+                                print(f"Capture ID: {row['capture_id']}, Start: {row['start']}, Satellite: {row['satellite_name']}, Status: {row['status']}")
+                        else:
+                            print("No results found or error in API call.")
+                    continue
                 elif sub_choice == 'q': # Return to main menu
                     break
                 else:
@@ -283,12 +298,7 @@ def main():
             logging.info(f"Date Range For Search: {start_date} - {end_date}")
             
             # Create aois_list
-            aois_list = searcher.create_aois_from_points(points, width)
-            # Create master map(s)
-            master_map = visualizer.create_folium_map(aois_list)
-
-            # For the list of points create a map with all of the points and bounding boxes on it.
-            # master_map, aois_list = visualizer.process_multiple_points_to_bboxs(points, width)
+            aois_list, points_list = searcher.create_aois_from_points(points, width)
             
             # Loop through the bbox aois and search and append the results to the map.
             logging.info(f"Number of AOIs Entered: {len(aois_list)}.")
@@ -302,9 +312,9 @@ def main():
                     logging.warning(f"Total Captures: {num_captures}, Total Tiles: {num_tiles}.")
                     
                     # Save tiles into a directory for this job with.
-                    searcher.save_tiles(aoi) # tiles_gdf is stored inside searcher after search.
+                    searcher.save_tiles(tiles_gdf) # tiles_gdf is stored inside searcher after search.
 
-            logging.warning("Tile Download Complete!")
+            # logging.warning("Tile Download Complete!")
             continue
         elif user_choice == '5': # Create Heatmap for Stack Depth
             logging.warning("Create Heatmap Of Depth Of Stack.")
@@ -421,13 +431,12 @@ def main():
 
             if num_tiles > 0:
                 fig_obj = visualizer.cloud_heatmap(tiles_gdf)
-                if fig_obj:
-                    fig_filename = f"maps/CloudCover_Heatmap_{now.strftime('%Y-%m-%d_%H-%M-%S')}.html"
-                    fig_obj.write_html(fig_filename)
+                
                 logging.warning("Heat Map Complete And Saved To Maps Folder...")
             else:
-                logging.warning("No tiles found!")
+                logging.warning("No Tiles Found.")
                 continue
+            continue
         elif user_choice == 'q': # Q for quit
             print("Exiting. Goodbye!")
             break

@@ -76,7 +76,7 @@ class TaskingManager:
     def query_tasks_by_status(self, status=""): #Validated
         """Validate the status input and set the statusparams accordingly."""
 
-        valid_statuses = ["completed", "failed", "rejected", "received"]
+        valid_statuses = ["completed", "failed", "rejected", "received", "canceled"]
         if status in valid_statuses:
             statusparams = {"status": status}
         else:
@@ -153,7 +153,7 @@ class TaskingManager:
         except ValueError:
             return False
 
-    def create_task(self, task): # Validated
+    def create_new_tasking(self, task): # Validated
         """User needs to pass the following structure in to place the tasting order:
             task = {
                 "project_name": project_name,
@@ -211,17 +211,46 @@ class TaskingManager:
             logger.warning(f"An error occurred in task_status: {e}")
             return None
 
+    def capture_list(self, task_id):
+        try:
+            # URLStatus = f'{TASKS_URL}/{task_id}/captures'  # task_id of the capture
+            URLStatus = f'{self.tasks_url}{task_id}/captures/'
+            
+            # Use api_call to get the JSON response
+            response_json = self._api_call(URLStatus)
+            print(URLStatus)
+
+            # Return the response which is a table of captures
+            return response_json
+
+        except Exception as e:
+            logger.warning(f"An error occurred in capture_list: {e}")
+            return None
+
+    def _ensure_dir(self, directory):
+        if not os.path.exists(directory):
+            os.makedirs(directory)
+
+
     def download_image(self, scene_set_id, download_dir="images"):
         try:
+            if download_dir is None:
+                download_dir = "images/"
+
+            self._ensure_dir(download_dir)
+
             SSIDparams = {"sceneset_id": scene_set_id}
             method = "GET"
-            logger.info(f"SSIDparam: {SSIDparams}")
+            logger.debug(f"SSIDparam: {SSIDparams}")
             # Use api_call to get the JSON response
-            response_df = self._api_call(self.download_url, method=method, params=SSIDparams)
-            logger.info(f"Response: {response_df}")
+            url = self.download_url 
+            response_df = self._api_call(url, method=method, params=SSIDparams)
+            
+            if response_df.empty:
+                logger.info("No data found in response.")
+                return None
 
-            # # Write the DataFrame to a JSON file for debugging
-            # response_df.to_json('maps/response.json', orient='split', indent=4)
+            logger.debug(f"Response: {response_df}")
 
             # Extract the 'attachments' list of dictionaries from the first row
             attachments = response_df.iloc[0]['attachments']
@@ -229,15 +258,24 @@ class TaskingManager:
             # Find the attachment with 'name' as 'delivery_zip'
             delivery_zip_attachment = next(att for att in attachments if att['name'] == 'delivery_zip')
 
+            logger.debug(f"delivery_zip_zttachment: {delivery_zip_attachment}")
+
             # Get the URL and file_name from the found attachment
             url = delivery_zip_attachment['url']
             file_name = delivery_zip_attachment['file_name']
+            # logger.info(f"file_name: {file_name}")
 
-            # Create the full file path
+            # logger.info(f"download_dir: {download_dir}")
+            # Create the full file path to save to.
             file_path = os.path.join(download_dir, file_name)
 
+            # logger.info(f"file_path: {file_path}")
+
             # Download the zip file
-            urllib.request.urlretrieve(url, file_path)
+            saved_file, httpmessage = urllib.request.urlretrieve(url, file_path)
+
+            logger.info(f"Final Filename: {saved_file}")
+            logger.info(f"httpmessage: {httpmessage}")
 
             logger.info(f"Downloaded: {file_name}")
             logger.info(f"URL: {url}")
@@ -265,7 +303,7 @@ class TaskingManager:
 
             response.raise_for_status()  # Check if the request was successful
             if 'results' in response.json():
-                logger.info("DEBUG: Results Exists!")
+                logger.debug(response.json())
                 return pd.json_normalize(response.json(), record_path=['results'])
             else:
                 return response.json()

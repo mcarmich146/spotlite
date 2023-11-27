@@ -28,11 +28,11 @@ logger = logging.getLogger(__name__)
 tiles_gdf = None
     
 class Searcher:
-    def __init__(self):
+    def __init__(self, key_id="", key_secret=""):
         # Assigning default values to instance attributes
         self.stac_api_url = "https://api.satellogic.com/archive/stac"
-        self.key_id = ""
-        self.key_secret = ""
+        self.key_id = key_id
+        self.key_secret = key_secret
         self.cloud_threshold = 30
         self.min_product_version = "1.0.0"
         self.min_tile_coverage_percent = 0.01
@@ -89,6 +89,11 @@ class Searcher:
             else:
                 # Option 1: Log the absence of data
                 logger.debug("No items found for a date chunk, skipping...")
+        
+        # Check if all_gdfs is empty
+        if not all_gdfs:
+            logger.warning("No data found during search.")
+            return pd.DataFrame(), 0, 0  # Returning an empty DataFrame and zeros
 
         # Combine all GeoDataFrames into one
         tiles_gdf = pd.concat(all_gdfs, ignore_index=True)
@@ -118,8 +123,7 @@ class Searcher:
         # Return the search results
         return tiles_gdf, len(tiles_gdf), num_captures
         
-    def save_tiles(self, output_dir=None):
-        global tiles_gdf
+    def save_tiles(self, tiles_gdf, output_dir=None):
 
         if tiles_gdf is None:
             logger.warning("Search Output Not Initialized.  Run search_archive first.")
@@ -193,6 +197,7 @@ class Searcher:
         points_list = []
         for point in points:
             lat, lon = point['lat'], point['lon']
+            # logger.warning(f"Lat, Long, Width: {lat}, {lon}, {width}")
             aoi = self._create_bounding_box(lat, lon, width)
 
             # Add the bounding box polygon to the list of search areas.
@@ -203,9 +208,10 @@ class Searcher:
         # Return both the master map and the list of AOIs
         return aois_list, points_list
 
-    def _create_bounding_box(center_lat: float,
-                        center_lon: float,
-                        width_km: float = 3) -> Type[Polygon]:  # Tuple[float, float, float, float]:
+    def _create_bounding_box(self,
+                             center_lat: float,
+                            center_lon: float,
+                            width_km: float = 3) -> Type[Polygon]:  # Tuple[float, float, float, float]:
         """Create bounding box based on center and width in 16:9 AR for presentations."""
 
         # Calculate the height based on the width to maintain a 16:9 aspect ratio.
@@ -376,7 +382,7 @@ class Searcher:
         sys.stdout.write(f'\r[{arrow}{spaces}]')
         sys.stdout.flush()
 
-    def _ensure_dir(directory):
+    def _ensure_dir(self, directory):
         if not os.path.exists(directory):
             os.makedirs(directory)
 
