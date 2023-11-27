@@ -11,6 +11,7 @@ This package supports the following activities:
     save_tiles - download and save tiles on local computer
     filter_tiles - filter tiles based on cloud cover and valid pixel percent
     filter_and_sort_tiles - filter_tiles plus sort and eliminate duplicates for heatmap optimization
+    create_aois_from_points - takes point list and returns bbox aois and points list
   Class Visualizer:
     animate_tile_stack - animate tile stack found by Searcher class, saves results to maps/ and images/
     cloud_heatmap - create heatmap for tiles with cloud cover below a configurable threshold
