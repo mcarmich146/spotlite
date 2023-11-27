@@ -20,7 +20,7 @@ This package supports the following activities:
 3) age_heatmap - create heatmap for tile age
 4) count_heatmap - create heatmap for tile count, essentially the depth of stacks.
 
-###Class TaskingManager:
+### Class TaskingManager:
 1) create_new_task - creates new task request to capture new imagery
 2) cancel_task - cancels a task
 3) task_status - checks the status of a task
