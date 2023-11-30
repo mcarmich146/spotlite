@@ -16,7 +16,7 @@ import rasterio
 from rasterio.merge import merge
 from shapely.geometry import Polygon
 from shapely.ops import transform
-import matplotlib.pyplot as plt 
+import matplotlib.pyplot as plt
 from PIL import Image
 from datetime import datetime, timedelta
 import imageio
@@ -36,6 +36,8 @@ import logging
 import requests
 import shutil
 import sys
+
+from spotlite import Visualizer
 
 # Set Global Varables
 img_width, img_height = 400, 300
@@ -99,20 +101,20 @@ def get_tiles_from_bounds(bounds_raster, crs, step=500, precision=1000):
 def resize_img_to_array(img, img_shape=(244, 244)):
     img_array = np.array(
         img.resize(
-            img_shape, 
+            img_shape,
             Image.ANTIALIAS
         )
     )
-    
+
     return img_array
 
-def image_grid(fn_images: list, 
-               text: list = [], 
-               top: int = 8, 
+def image_grid(fn_images: list,
+               text: list = [],
+               top: int = 8,
                per_row: int = 4):
     """
     Display a grid of images with optional annotations.
-    
+
     Parameters:
     - fn_images (list): List of image file paths.
     - text (list): List of annotations (default is an empty list).
@@ -195,7 +197,7 @@ def connect_to_archive():
         headers = {"authorizationToken":f"Key,Secret {API_KEY_ID},{API_KEY_SECRET}"}
         logger.debug(f"URL: {config.STAC_API_URL}")
         logger.debug(f"Header: {headers}")
-        
+
         archive = Client.open(STAC_API_URL, headers=headers)
         response = requests.get(STAC_API_URL, headers=headers)  # include your auth headers here
         logger.debug(response.status_code)
@@ -236,7 +238,7 @@ def search_with_dates(aoi, start_date, end_date):
             logger.debug(f"No results returned for period: {start_date} to {end_date}")
             return None
 
-        if not isinstance(items, ItemCollection):  
+        if not isinstance(items, ItemCollection):
             logger.error(f"Unexpected type returned: {type(items)}")
             return None
 
@@ -285,7 +287,7 @@ def search_archive(aoi, start_date, end_date):
     for items in all_results:
         if items and len(items) > 0:
             # If first time through then epsg_code is None meaning to use whatever CRS is in that tile group
-            gdf = setup_GDF(items, epsg_code) 
+            gdf = setup_GDF(items, epsg_code)
             all_gdfs.append(gdf)
             epsg_code = gdf.crs #set the epsg_code to the GDF.crs for future tile groups.
             logger.info(f"Using EPSG:{epsg_code} for all tiles.")
@@ -296,14 +298,14 @@ def search_archive(aoi, start_date, end_date):
     if len(all_gdfs) == 0:
         logger.warning("No data found for search.")
         return None, 0, 0
-    
+
     # Combine all GeoDataFrames into one
     combined_gdf = pd.concat(all_gdfs, ignore_index=True)
 
     # Transform the result to a geodataframe to easily manipulate and explore the data
     # grouped = group_items_into_GPDF(combined_items)
     grouped = group_by_capture(combined_gdf)
-    
+
     # Print the results to the log.
     num_captures = 0
     for (capture_date, outcome_id), group in grouped:
@@ -315,10 +317,10 @@ def search_archive(aoi, start_date, end_date):
         else:
             cloud_cover_mean = 101
             logger.info("Column 'eo:cloud_cover' doesn't exist, Setting CC to 101!")
-        
+
         # Grab the first tile's product version
         product_version = group.iloc[0]['satl:product_version']
-        
+
         logger.warning(f"Capture Date: {capture_date}, Outcome ID: {outcome_id}, Tile Count: {tile_count}, Cloud Cover: {cloud_cover_mean:.0f}%, Prod. Ver.: {product_version}")
         num_captures = num_captures + 1
 
@@ -348,7 +350,7 @@ def is_group_valid(group_df):
     if tile_count < max_tile_count * config.MIN_TILE_COVERAGE_PERCENT:
         logger.warning(f"Capture {capture_date} Rejected Due To Insufficient Tile Coverage: {tile_count}/{max_tile_count}")
         return False
-    
+
     mean_cloud_cover = group_df['eo:cloud_cover'].mean()
     product_version = group_df.iloc[0]['satl:product_version']
     outcome_id = group_df.iloc[0]['satl:outcome_id']
@@ -357,17 +359,17 @@ def is_group_valid(group_df):
         invalid_outcome_ids.append(outcome_id)
         logger.warning(f"Capture Rejected Due To Version: Product_Version: {product_version}, Cloud: {mean_cloud_cover:.0f}%, OutcomeId: {outcome_id}")
         return False
-    
+
     if pd.isna(mean_cloud_cover) or mean_cloud_cover > config.CLOUD_THRESHOLD:
         logger.warning(f"Capture Rejected Due To Cloud Cover: Product_Version: {product_version}, Cloud: {mean_cloud_cover:.0f}%, OutcomeId: {outcome_id}")
         return False
-    
+
     return True
 
 def convert_geotiff_to_png(geotiff_path):
     # Replace .TIFF with .PNG to create the new filename
     png_path = os.path.splitext(geotiff_path)[0] + '.PNG'
-    
+
     # Open the GeoTIFF and save it as a PNG
     with Image.open(geotiff_path) as img:
         img.save(png_path)
@@ -384,12 +386,12 @@ def create_single_image_html(fnames):
     image_path = fnames[0]
     # Appending '_resized.tiff' to the filenames
     image_path_resized = os.path.splitext(image_path)[0] + '_resized.tiff'
-    
+
     # Get the absolute paths
     abs_image_path_resized = os.path.abspath(image_path_resized)
-    
+
     capture_date = extract_date(image_path).strftime("%Y%m%dT%H%M%S")
-    
+
     # Take the geotiffs and save them as PNG to support web display.
     abs_png_before_image_path = convert_geotiff_to_png(abs_image_path_resized)
 
@@ -444,7 +446,7 @@ def create_before_and_after(fnames):
 
     before_date = extract_date(before_image_path).strftime("%Y%m%dT%H%M%S")
     after_date = extract_date(after_image_path).strftime("%Y%m%dT%H%M%S")
-    
+
     # Take the geotiffs and save them as PNG to support web display.
     abs_png_before_image_path = convert_geotiff_to_png(abs_before_image_path)
     abs_png_after_image_path = convert_geotiff_to_png(abs_after_image_path)
@@ -476,7 +478,7 @@ def create_before_and_after(fnames):
 
     # Save to an HTML file
     now = datetime.now().strftime("%Y%m%dT%H%M%S")
-    # before_and_after_filename = f'images/BeforeAfter_{before_date}-{after_date}-Generated-{now}.HTML' 
+    # before_and_after_filename = f'images/BeforeAfter_{before_date}-{after_date}-Generated-{now}.HTML'
     before_and_after_filename = f"images/BeforeAfter_{before_date}-{after_date}-Generated_{now}.html"
 
     # Make sure the directory exists
@@ -506,7 +508,7 @@ def save_and_animate_tiles(tiles_gdf, bbox_aoi):
         logger.info(f"Spawned Mosaic Process: {capture_date}, {outcome_id}")
 
         # Filter rows from tiles_gdf where their 'id' is in the group_df index
-        
+
         fname = f"CaptureDate_{capture_date.strftime('%Y%m%dT%H%M%S')}_MosaicCreated_{datetime.now().strftime('%Y%m%dT%H%M%S')}.tiff"
         full_path = os.path.join('images', fname)
         mosaic_tiles(group_df, full_path)
@@ -533,14 +535,14 @@ def save_and_animate_tiles(tiles_gdf, bbox_aoi):
                 fnames.append(result)
 
     animate_images = "y" #input("Animate stack of tiles? (y/n):") or "y"
-    
+
     if animate_images == "y":
         try:
             logger.info("Animating Images...")
             seconds_between_frames = config.PERIOD_BETWEEN_FRAMES
             now = datetime.now().strftime("%Y%m%dT%H%M%S")
-            output_animation_filename = f'images/Stack_Animation_Video_{now}.GIF' 
-            
+            output_animation_filename = f'images/Stack_Animation_Video_{now}.GIF'
+
             create_animation_from_files(fnames, output_animation_filename, seconds_between_frames, bbox_aoi)
             create_before_and_after(fnames)
 
@@ -554,8 +556,8 @@ def save_and_animate_tiles(tiles_gdf, bbox_aoi):
         except Exception as e:
             logger.error(f"Error occurred while creating animation: {e}")
             return None
-    
-    return abs_output_animation_filename, fnames 
+
+    return abs_output_animation_filename, fnames
 
 def show_progress_bar(iteration, total, bar_length=50):
     progress = float(iteration) / float(total)
@@ -569,7 +571,7 @@ def save_tiles_for_bbox(tiles_gdf, bbox_aoi):
     if tiles_gdf.empty:
         logger.warning("No items found to be animated.")
         return False
-    
+
     grouped_items_GPDF = group_by_capture(tiles_gdf)
 
     # Create a global directory for all tiles
@@ -584,7 +586,7 @@ def save_tiles_for_bbox(tiles_gdf, bbox_aoi):
         logger.debug(f"Len of Group: {len(group)}")
         # subItems = ItemCollection([x for x in items if x.id in group.index])
         tile_number = 1
-        
+
         for id, tile_gdf in group.iterrows():
             logger.debug(f"Processing Tile: {id+1}")
             # Check the tile cloud cover and reject if cloudy.
@@ -593,7 +595,7 @@ def save_tiles_for_bbox(tiles_gdf, bbox_aoi):
             if cloud_cover is None:
                 logger.warning("Cloud cover information missing. Skipping tile...")
                 continue
-            
+
             # Check the tile cloud cover and reject if cloudy.
             if cloud_cover > config.CLOUD_THRESHOLD:
                 logger.warning(f"Tile Rejected With Cloud Cover Of: {cloud_cover:.0f}")
@@ -614,7 +616,7 @@ def save_tiles_for_bbox(tiles_gdf, bbox_aoi):
                 logger.error(f"Failed to save tile: {e}")
                 continue
 
-            
+
             tile_number += 1
 
         show_progress_bar(index+1, len(grouped_items_GPDF))
@@ -624,13 +626,13 @@ def save_tiles_for_bbox(tiles_gdf, bbox_aoi):
 def extract_date(filename):
     # Split the filename into its constituent parts
     parts = filename.split(os.sep)
-    
+
     # Assume the date is in the second part of the filename and the first part of that second part
-    date_str = parts[1].split('_')[1]  
-    
+    date_str = parts[1].split('_')[1]
+
     # Convert the date string to a datetime object
     datetime_str = datetime.strptime(date_str, '%Y%m%dT%H%M%S')
-    
+
     return datetime_str
 
 def get_max_dimensions(image_filenames):
@@ -664,18 +666,18 @@ def get_max_dimensions_and_bounds(image_filenames):
                     max(largest_bounds[2], bounds[2]),  # max right
                     max(largest_bounds[3], bounds[3])   # max top
                 )
-                
+
     return max_width, max_height, largest_bounds
 
 
 # def normalize_image_color(reference_img_path, output_img_path):
 #     # Read the reference image
 #     reference_img = io.imread(reference_img_path)
-    
+
 #     # Enhance appearance using Contrast Stretching
 #     p2, p98 = np.percentile(reference_img, (2, 98))
 #     reference_img_rescale = exposure.rescale_intensity(reference_img, in_range=(p2, p98))
-    
+
 #     # Save the enhanced reference image
 #     io.imsave(output_img_path, reference_img_rescale)
 
@@ -683,20 +685,20 @@ def get_max_dimensions_and_bounds(image_filenames):
 #     # Read source and reference images
 #     source_img = io.imread(source_img_path)
 #     reference_img = io.imread(reference_img_path)
-    
+
 #     # Convert to CIELAB color space
 #     source_lab = color.rgb2lab(source_img)
 #     reference_lab = color.rgb2lab(reference_img)
-    
+
 #     # Perform histogram matching on the luminance channel
 #     matched_l = exposure.match_histograms(source_lab[:,:,0], reference_lab[:,:,0])
-    
+
 #     # Replace the luminance channel in the source image
 #     source_lab[:,:,0] = matched_l
-    
+
 #     # Convert back to RGB color space
 #     matched_img = color.lab2rgb(source_lab)
-    
+
 #     # Save the matched image
 #     io.imsave(output_img_path, (matched_img * 255).astype(np.uint8))
 
@@ -748,15 +750,15 @@ def resize_mosaics_to_largest(image_filenames):
 def resize_mosaics_to_bbox(image_filenames, buffered_bounds):
     """Resize image mosaics to fit the given bounding box."""
     minx, miny, maxx, maxy = buffered_bounds
-    
+
     # New filenames for resized images
     resized_filenames = []
-    
+
     for fname in image_filenames:
         with rasterio.open(fname) as src:
             # Calculate new transform
             out_transform = rasterio.transform.from_bounds(minx, miny, maxx, maxy, src.width, src.height)
-            
+
             # Update metadata
             out_meta = src.meta.copy()
             out_meta.update({
@@ -784,49 +786,74 @@ def resize_mosaics_to_bbox(image_filenames, buffered_bounds):
             resized_filenames.append(new_fname)
             with rasterio.open(new_fname, 'w', **out_meta) as dest:
                 dest.write(dest_data)
-    
+
     return resized_filenames
 
 
 def buffer_bbox(bbox_aoi, buffer_km=0.5, crs='epsg:4326'):
     # &&&&&&This function crashes the system&&&&&&
-    
+
     """Buffer a bounding box by a certain number of meters."""
-    
+
     # Initialize transformer
     transformer = Transformer.from_crs(crs, "epsg:3395")  # WGS 84 / World Mercator
-    
+
     # Transform to meters (WGS 84 / World Mercator)
     aoi_shape_meters = transform(transformer.transform, bbox_aoi)
-    
+
     # Buffer in meters
     aoi_shape_meters = aoi_shape_meters.buffer(buffer_km * 1000)
-    
+
     # Transform back to original CRS
     transformer_back = Transformer.from_crs("epsg:3395", crs)
-    
+
     aoi_shape = transform(transformer_back.transform, aoi_shape_meters)
-    
-    return aoi_shape.bounds  
+
+    return aoi_shape.bounds
 
 def sort_filenames(fnames):
     fnames.sort(key=extract_date)
     return fnames
 
+
+def _get_font() -> ImageFont:
+    """Returns either a specified font or falls back to the default font."""
+    try:
+        font_path = config.FONT_PATH
+
+        # if path exists
+        if Path(font_path).is_file():
+            logging.info("using custom font: '%s'", font_path)
+            enlarged_font_size = 100
+            font = ImageFont.truetype(font_path, enlarged_font_size)
+
+        else:
+            logging.info("specified font path not found: '%s'", font_path)
+            raise AttributeError
+
+    except AttributeError:
+        logging.info("using default font.")
+        font = ImageFont.load_default()
+
+    return font
+
 def create_animation_from_files(image_filenames, output_filename, pause_duration, bbox_aoi):
     logger.info(f"Creating Animation For Filenames: {image_filenames}")
     # Sort the image filenames based on the capture date
     image_filenames.sort(key=extract_date)
-    
+
     resized_filenames = resize_mosaics_to_largest(image_filenames)
 
     # Create a writer object
     duration_ms = pause_duration * 1000  # Convert seconds to milliseconds
-    
+
     # Seek the largest dimensions
     max_width, max_height, largest_bounds = get_max_dimensions_and_bounds(resized_filenames)
 
     writer = imageio.get_writer(output_filename, duration=duration_ms, macro_block_size=1, loop=0)
+
+    # Assemble font details
+    font = _get_font()
 
     # Iterate through the image filenames and add them to the animation
     for index, image_filename in enumerate(resized_filenames):
@@ -837,20 +864,16 @@ def create_animation_from_files(image_filenames, output_filename, pause_duration
         resized_image = image.resize((max_width, max_height), Image.LANCZOS)
         # Now we use the largest dimensions for our blank canvas
         blank_image = Image.new('RGBA', (max_width, max_height), 'black')
-        
+
         # blank_image.paste(resized_image.convert("RGBA"), offset)
         blank_image.paste(resized_image.convert("RGBA"), (0,0))
-                
+
         # Create a drawing context
         draw = ImageDraw.Draw(blank_image)
-        
-        # Define the font and size
-        enlarged_font_size = 100
-        font = ImageFont.truetype("fonts/tahoma.ttf", enlarged_font_size)
-        
+
         # Extract the date from the filename and format it
         date = extract_date(image_filename).strftime('%Y-%m-%dT%H%M%S')
-        
+
         # Extract bounds from Polygon object
         minx, miny, maxx, maxy = bbox_aoi.bounds
 
@@ -863,31 +886,31 @@ def create_animation_from_files(image_filenames, output_filename, pause_duration
 
         # Calculate the width of the text
         text_width = draw.textlength(label_text, font=font)
-        
+
         # Define the position to center the text horizontally, near the top vertically
         position = ((max_width - text_width) / 2, 10)
-        
+
         # Draw the text on the image in yellow
         draw.text(position, label_text, fill="yellow", font=font)
 
         # # Calculate the width of the text
         # text_width = draw.textlength(f"Date: {date}", font=font)
-        
+
         # # Define the position to center the text horizontally, near the top vertically
         # position = ((max_width - text_width) / 2, 10)
-        
+
         # # Draw the date text on the image in yellow
         # draw.text(position, f"Date: {date}", fill="yellow", font=font)
-        
+
         # Convert blank_image to a numpy array
         image_np = np.array(blank_image)
-        
+
         writer.append_data(image_np)
-    
+
     # Close the writer to finalize the animation
     writer.close()
     logger.info(f"Animation saved as: {output_filename}.")
-    
+
 def get_lat_long_from_place(place):
     # The regex below matches a pattern like '-34.2355, 19.2157'
     lat_long_pattern = re.compile(r'^-?\d+\.\d+,\s*-?\d+\.\d+$')
@@ -926,7 +949,7 @@ def print_invalid_outcome_ids():
     # Generate a timestamp for the filename
     timestamp = datetime.now().strftime('%Y%m%dT%H%M%S')
     filename = f'invalid_outcome_ids/invalid_outcome_ids_{timestamp}.txt'
-    
+
     # At the end of your animation function, or wherever you deem appropriate, append them to the file.
     global invalid_outcome_ids
     unique_ids = set(invalid_outcome_ids)
@@ -941,7 +964,7 @@ def setup_GDF(items, epsg_code_input=None):
     if items is None or len(items) == 0:
         logger.error("Error: Trying To Group Empty Items!")
         return False
-        
+
     # Check for the first item and its properties
     first_item = next(iter(items), None)
     if first_item is not None:
@@ -960,7 +983,7 @@ def setup_GDF(items, epsg_code_input=None):
     for item in items:
         epsg_code_number = item.properties.get('proj:epsg', None)
         epsg_code = f"epsg:{epsg_code_number}"
-        
+
         if not epsg_code:
             logger.warning("'proj:epsg' not found in item's properties.")
             continue
@@ -975,7 +998,7 @@ def setup_GDF(items, epsg_code_input=None):
         #     target_crs = first_epsg_code
         #     logger.warning(f"Using first_epsg_code: {first_epsg_code}")
         # else: # If there is no Input epsg arg and the epsg_code is the same then we just use epsg_code, no change.
-        #     target_crs = epsg_code  
+        #     target_crs = epsg_code
         #     logger.warning(f"Using Existing EPSG Code: {epsg_code}")
 
         feature = item.to_dict()
@@ -984,13 +1007,13 @@ def setup_GDF(items, epsg_code_input=None):
         # Reproject to standard CRS if different
         # print(f"target_crs_str: {target_crs}")
         # logger.info(f"GDF CRS: {gdf.crs}, Target_CRS: {target_crs}")
-        
+
         # if gdf.crs.to_string() != target_crs:
         #     logger.info(f"Tile transforming from {gdf.crs.to_string()} to {target_crs}")
         #     # target_crs = Transformer(target_crs)
         #     gdf = gdf.to_crs(target_crs)
         #     logger.warning(f"CRS After Transformation: {gdf.crs.to_string()}")
-            
+
 
         gdf['id'] = item.id
         gdf['capture_date'] = pd.to_datetime(item.datetime)
@@ -1002,7 +1025,7 @@ def setup_GDF(items, epsg_code_input=None):
         gdf['analytic_url'] = item.assets["analytic"].href
         gdf['outcome_id'] = item.properties['satl:outcome_id']
         gdf['valid_pixel_percent'] = item.properties['satl:valid_pixel']
-        
+
         gdfs.append(gdf)
 
     # Combine all reprojected GeoDataFrames
@@ -1015,7 +1038,7 @@ def setup_GDF(items, epsg_code_input=None):
     # gdf['id'] = [item.id for item in items]
     # gdf.set_index('id', inplace=True)
     # gdf['capture_date'] = [pd.to_datetime(item.datetime) for item in items]
-    
+
     # # Convert capture_date to timezone-naive (assuming it's in UTC)
     # gdf['capture_date'] = gdf['capture_date'].dt.tz_localize(None)
 
@@ -1026,14 +1049,14 @@ def setup_GDF(items, epsg_code_input=None):
     # # gdf = gdf.to_crs(standard_crs)
 
     # gdf['data_age'] = (datetime.utcnow() - gdf['capture_date']).dt.days  # Using utcnow
-    
+
     # Count the number of tiles in each 'grid:code'
     tile_counts = combined_gdf['grid:code'].value_counts().reset_index()
     tile_counts.columns = ['grid:code', 'image_count']
 
     # Join this back to the original GeoDataFrame
     combined_gdf = pd.merge(combined_gdf, tile_counts, on='grid:code', how='left')
-    
+
     # # # Sort by age so that youngest tiles are last (and thus displayed on top)
     # # gdf.sort_values(by='data_age', ascending=False, inplace=True)
 
@@ -1058,7 +1081,7 @@ def setup_GDF(items, epsg_code_input=None):
     # gdf['analytic_url'] = analytic_urls
     # gdf['outcome_id'] = outcome_ids
     # gdf['valid_pixel_percent'] = valid_pixel_percents
-    
+
     return combined_gdf
 
 def group_by_capture(gdf):
@@ -1084,15 +1107,15 @@ def create_cloud_free_basemap(tiles_gdf):
         return None
 
     # Filter by cloud coverage and valid pixel percentage
-    cloud_filtered_tiles_gdf = tiles_gdf[(tiles_gdf['eo:cloud_cover'] <= config.CLOUD_THRESHOLD) & 
+    cloud_filtered_tiles_gdf = tiles_gdf[(tiles_gdf['eo:cloud_cover'] <= config.CLOUD_THRESHOLD) &
                                          (tiles_gdf['valid_pixel_percent'] >= config.VALID_PIXEL_PERCENT_FOR_BASEMAP)].copy()
 
     #
     # Sort by capture date
     cloud_filtered_tiles_gdf.sort_values('capture_date', ascending=False, inplace=True)
-    
-    
+
+
     # Group by grid cell and take the first (most recent) record
     most_recent_cloud_free_tiles = cloud_filtered_tiles_gdf.groupby('grid:code').first().reset_index()
 
-    return most_recent_cloud_free_tiles 
+    return most_recent_cloud_free_tiles

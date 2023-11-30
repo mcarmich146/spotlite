@@ -4,7 +4,7 @@
 #
 # This file is subject to the terms and conditions defined in the file 'LICENSE',
 # which is part of this source code package.
-# 
+#
 # Functions:
 #   save_and_animate_tiles
 #   age_heatmap
@@ -55,7 +55,7 @@ class Visualizer:
         self.valid_pixel_percent_for_basemap = 100
         self.cloud_threshold = 30
         self._param = None
-    
+
     @property
     def param(self):
         return self._param
@@ -64,7 +64,7 @@ class Visualizer:
     def param(self, value):
         self._param = value
 
-    def animate_tile_stack(self, tiles_gdf, bbox_aoi):
+    def animate_tile_stack(self, tiles_gdf, bbox_aoi, font=None):
         abs_output_animation_filename = None
         if tiles_gdf.empty:
             logger.warning("No items found to be animated.")
@@ -72,6 +72,10 @@ class Visualizer:
 
         fnames = []
         grouped = self._group_by_capture(tiles_gdf)
+
+        # if not font is specified, use default font
+        if font is None:
+            font = ImageFont.load_default()
 
         global max_tile_count
         max_tile_count = max(len(group) for _, group in grouped)
@@ -97,15 +101,15 @@ class Visualizer:
                     fnames.append(result)
 
         animate_images = "y" #input("Animate stack of tiles? (y/n):") or "y"
-        
+
         if animate_images == "y":
             try:
                 logger.info("Animating Images...")
                 seconds_between_frames = self.period_between_frames
                 now = datetime.now().strftime("%Y%m%dT%H%M%S")
-                output_animation_filename = f'images/Stack_Animation_Video_{now}.GIF' 
-                
-                self._create_animation_from_files(fnames, output_animation_filename, seconds_between_frames, bbox_aoi)
+                output_animation_filename = f'images/Stack_Animation_Video_{now}.GIF'
+
+                self._create_animation_from_files(fnames, output_animation_filename, seconds_between_frames, bbox_aoi, font)
                 # create_before_and_after(fnames)
 
                 # Validate that the file was actually created
@@ -118,14 +122,14 @@ class Visualizer:
             except Exception as e:
                 logger.error(f"Error occurred while creating animation: {e}")
                 return None
-        
-        return abs_output_animation_filename, fnames 
+
+        return abs_output_animation_filename, fnames
 
     def _process_group(self, capture_date, outcome_id, group_df):
         if False == self._is_group_valid(group_df):
             return None  # return None if the group is rejected
         logger.info(f"Spawned Mosaic Process: {capture_date}, {outcome_id}")
-        
+
         fname = f"CaptureDate_{capture_date.strftime('%Y%m%dT%H%M%S')}_MosaicCreated_{datetime.now().strftime('%Y%m%dT%H%M%S')}.tiff"
         full_path = os.path.join('images', fname)
         self._mosaic_tiles(group_df, full_path)
@@ -226,7 +230,7 @@ class Visualizer:
         if out_filename is None:
             out_filename = f"maps/ImageCount_Heatmap_{now.strftime('%Y-%m-%d_%H-%M-%S')}.html"
         m.save(out_filename)  # Save to an HTML file
-        
+
         return m
 
     def cloud_heatmap(self, tiles_gdf: Dict, existing_fig: go.Figure = None, out_filename: str = None) -> go.Figure:
@@ -345,7 +349,7 @@ class Visualizer:
         # Set initial location using the first point's coordinates
         initial_lon, initial_lat = points[0].x, points[0].y
         master_map = folium.Map(location=[initial_lat, initial_lon], zoom_start=8)
-        
+
         for aoi in aois:
             # Create a folium Polygon from AOI and add it to the map
             folium.Polygon(
@@ -481,7 +485,7 @@ class Visualizer:
         if tile_count < max_tile_count * self.min_tile_coverage_percent:
             logger.warning(f"Capture {capture_date} Rejected Due To Insufficient Tile Coverage: {tile_count}/{max_tile_count}")
             return False
-        
+
         mean_cloud_cover = group_df['eo:cloud_cover'].mean()
         product_version = group_df.iloc[0]['satl:product_version']
         outcome_id = group_df.iloc[0]['satl:outcome_id']
@@ -490,11 +494,11 @@ class Visualizer:
             invalid_outcome_ids.append(outcome_id)
             logger.warning(f"Capture Rejected Due To Version: Product_Version: {product_version}, Cloud: {mean_cloud_cover:.0f}%, OutcomeId: {outcome_id}")
             return False
-        
+
         if pd.isna(mean_cloud_cover) or mean_cloud_cover > self.cloud_threshold:
             logger.warning(f"Capture Rejected Due To Cloud Cover: Product_Version: {product_version}, Cloud: {mean_cloud_cover:.0f}%, OutcomeId: {outcome_id}")
             return False
-        
+
         return True
 
     def _ensure_dir(self, directory):
@@ -522,7 +526,7 @@ class Visualizer:
                         max(largest_bounds[2], bounds[2]),  # max right
                         max(largest_bounds[3], bounds[3])   # max top
                     )
-                    
+
         return max_width, max_height, largest_bounds
 
     def _resize_mosaics_to_largest(self, image_filenames):
@@ -570,16 +574,16 @@ class Visualizer:
 
         return new_filenames
 
-    def _create_animation_from_files(self, image_filenames, output_filename, pause_duration, bbox_aoi):
+    def _create_animation_from_files(self, image_filenames, output_filename, pause_duration, bbox_aoi, font):
         logger.info(f"Creating Animation For Filenames: {image_filenames}")
         # Sort the image filenames based on the capture date
         image_filenames.sort(key=self._extract_date)
-        
+
         resized_filenames = self._resize_mosaics_to_largest(image_filenames)
 
         # Create a writer object
         duration_ms = pause_duration * 1000  # Convert seconds to milliseconds
-        
+
         # Seek the largest dimensions
         max_width, max_height, largest_bounds = self._get_max_dimensions_and_bounds(resized_filenames)
 
@@ -594,20 +598,16 @@ class Visualizer:
             resized_image = image.resize((max_width, max_height), Image.LANCZOS)
             # Now we use the largest dimensions for our blank canvas
             blank_image = Image.new('RGBA', (max_width, max_height), 'black')
-            
+
             # blank_image.paste(resized_image.convert("RGBA"), offset)
             blank_image.paste(resized_image.convert("RGBA"), (0,0))
-                    
+
             # Create a drawing context
             draw = ImageDraw.Draw(blank_image)
-            
-            # Define the font and size
-            enlarged_font_size = 100
-            font = ImageFont.truetype("fonts/tahoma.ttf", enlarged_font_size)
-            
+
             # Extract the date from the filename and format it
             date = self._extract_date(image_filename).strftime('%Y-%m-%dT%H%M%S')
-            
+
             # Extract bounds from Polygon object
             minx, miny, maxx, maxy = bbox_aoi.bounds
 
@@ -620,18 +620,18 @@ class Visualizer:
 
             # Calculate the width of the text
             text_width = draw.textlength(label_text, font=font)
-            
+
             # Define the position to center the text horizontally, near the top vertically
             position = ((max_width - text_width) / 2, 10)
-            
+
             # Draw the text on the image in yellow
             draw.text(position, label_text, fill="yellow", font=font)
 
             # Convert blank_image to a numpy array
             image_np = np.array(blank_image)
-            
+
             writer.append_data(image_np)
-        
+
         # Close the writer to finalize the animation
         writer.close()
         logger.info(f"Animation saved as: {output_filename}.")
@@ -639,13 +639,13 @@ class Visualizer:
     def _extract_date(self, filename):
         # Split the filename into its constituent parts
         parts = filename.split(os.sep)
-        
+
         # Assume the date is in the second part of the filename and the first part of that second part
-        date_str = parts[1].split('_')[1]  
-        
+        date_str = parts[1].split('_')[1]
+
         # Convert the date string to a datetime object
         datetime_str = datetime.strptime(date_str, '%Y%m%dT%H%M%S')
-        
+
         return datetime_str
 
     def filter_tiles(self, tiles_gdf, cloud_cover=None, valid_pixels_perc=None):
@@ -654,7 +654,7 @@ class Visualizer:
         if tiles_gdf.empty:
             logging.warning("No Tiles Found")
             return None
-        
+
         if cloud_cover is None:
             cloud_cover = self.cloud_threshold
 
@@ -662,11 +662,11 @@ class Visualizer:
             valid_pixels_perc = self.valid_pixel_percent_for_basemap
 
         # Filter by cloud coverage and valid pixel percentage
-        filtered_tiles_gdf = tiles_gdf[(tiles_gdf['eo:cloud_cover'] <= cloud_cover) & 
+        filtered_tiles_gdf = tiles_gdf[(tiles_gdf['eo:cloud_cover'] <= cloud_cover) &
                                             (tiles_gdf['valid_pixel_percent'] >= valid_pixels_perc)].copy()
-        
+
         return filtered_tiles_gdf
- 
+
 
     def filter_and_sort_tiles(self, tiles_gdf, cloud_cover=None, valid_pixels_perc=None):
         """Filters tiles based on cloud cover and valid pixel percent and then sorts the tiles.
@@ -679,12 +679,12 @@ class Visualizer:
 
         # Sort by capture date
         filtered_tiles_gdf.sort_values('capture_date', ascending=False, inplace=True)
-        
-        
+
+
         # Group by grid cell and take the first (most recent) record
         most_recent_cloud_free_tiles = filtered_tiles_gdf.groupby('grid:code').first().reset_index()
 
-        return most_recent_cloud_free_tiles 
+        return most_recent_cloud_free_tiles
 
     def create_folium_basemap(self, capture_grouped_tiles_gdf: Dict) -> folium.Map:
         """Create folium basemap as starting point for further updates with heatmaps."""
@@ -716,4 +716,4 @@ class Visualizer:
     def _group_by_capture(self, gdf):
         # Grouping the data
         grouped = gdf.groupby([gpd.pd.Grouper(key="capture_date", freq="S"), "satl:outcome_id"])
-        return grouped # Returns > ((capture_date, outcome_id), GeoPanadasDF) 
+        return grouped # Returns > ((capture_date, outcome_id), GeoPanadasDF)
