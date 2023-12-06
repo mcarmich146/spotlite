@@ -122,4 +122,5 @@ POLYGON_FILES_PATH = "points_to_monitor/age_count_polygons_file.geojson" # A geo
 DEFAULT_BOUNDING_BOX_WIDTH = 3 # Default width of bounding box in km.
 DAYS_TO_SEACH_FOR_BEFORE_IMAGERY = 60 # Days to search for historical imagery for the Indications and Warnings app.
 IS_INTERNAL_TO_SATL = False # If True then use the behind the filewall connection -SATL only-, otherwise use credentials.
+FONT_PATH = '' # Optional, download custom fonts and place them in fonts/<font_name>.ttf path ... https://fonts.google.com/
 ```

@@ -5,18 +5,45 @@
 # This file is subject to the terms and conditions defined in the file 'LICENSE',
 # which is part of this source code package.
 
-import datetime
-from satellogicUtils import get_lat_long_from_place, ensure_dir
-from satellogicTaskingAPI import gather_task_inputs
+# standard library imports
 from datetime import datetime
-from dateutil.relativedelta import relativedelta
+from pathlib import Path
+
+# third-party imports
 import webbrowser
 import tkinter as tk
 from tkinter import filedialog
-import geopandas as gpd
 import logging
+from dateutil.relativedelta import relativedelta
+from PIL import ImageFont
+import geopandas as gpd
 from spotlite import Searcher, Visualizer, TaskingManager
+
+# application imports
 import config
+from satellogicUtils import get_lat_long_from_place, ensure_dir
+from satellogicTaskingAPI import gather_task_inputs
+
+def _get_font() -> ImageFont:
+    """Returns either a specified font or falls back to the default font."""
+    try:
+        font_path = config.FONT_PATH
+
+        # if path exists
+        if Path(font_path).is_file():
+            logging.info("using custom font: '%s'", font_path)
+            enlarged_font_size = 100
+            font = ImageFont.truetype(font_path, enlarged_font_size)
+
+        else:
+            logging.info("specified font path not found: '%s'", font_path)
+            raise AttributeError
+
+    except AttributeError:
+        logging.info("using default font.")
+        font = ImageFont.load_default()
+
+    return font
 
 def main():
     # Make Sure All The Directories Are Present
@@ -53,11 +80,11 @@ def main():
         print("8. Enter New Tasking.")
         print("9. Download Tiles For BBox.")
         print("q. For Quit...")
-        
+
         user_choice = input("Enter your choice: ")
         if user_choice == '1':
             use_geojson = input("Do you have a geojson POINT file (y/n)?: ").lower()
-            
+
             if use_geojson == 'y':
                 # Open the file dialog to select the GeoJSON file
                 root = tk.Tk()
@@ -76,13 +103,13 @@ def main():
                 place = input(f"Enter the place name or lat,lon in dec. deg.: ")
                 lat, lon = get_lat_long_from_place(place)
                 points = [{'lat': lat, 'lon': lon}]
-            
+
             # Set the Bbox width
             width = float(input("Provide search box width (km):"))
-            
+
             # Get the current date and calculate the date one month prior
             now = datetime.now()
-            one_month_ago = now - relativedelta(months=1) 
+            one_month_ago = now - relativedelta(months=1)
 
             # Format the dates to string (YYYY-MM-DD)
             end_date_str = now.strftime('%Y-%m-%d')
@@ -91,12 +118,12 @@ def main():
             start_date = input("Enter start date (YYYY-MM-DD) or press enter for 1 month ago: ") or one_month_ago_str
             end_date = input("Enter end date (YYYY-MM-DD) or press enter for now: ") or end_date_str
             logging.info(f"Date Range For Search: {start_date} - {end_date}")
-            
+
             # For the list of points create a map with all of the points and bounding boxes on it.
             aois_list, points_list = searcher.create_aois_from_points(points, width)
             master_map = visualizer.create_folium_map(points_list, aois_list)
             fig_obj = visualizer.create_choropleth_map(aois_list)
-            
+
             # Loop through the bbox aois and search and append the results to the map.
             logging.info(f"Number of AOIs: {len(aois_list)}.")
             save_and_animate = input("Save and Animate (y/n)?: ").lower() or "y" # apply this to every aoi.
@@ -104,19 +131,22 @@ def main():
             for index, aoi in enumerate(aois_list):
                 logging.info(f"Processing AOI #: {index+1}")
                 tiles_gdf, num_tiles, num_captures = searcher.search_archive(aoi, start_date, end_date)
-                                                
+
                 if num_tiles >0:
                     if 'eo:cloud_cover' not in tiles_gdf.columns:
                         logging.warning(f"Column 'eo:cloud_cover' doesn't exist for this AOI, skipping.")
                         continue
-                    else:                                    
-                        
+                    else:
+
                         # We want to save the tiles into their respective captures to then animate them.
                         logging.warning(f"Found Total Captures: {num_captures}, Total Tiles: {num_tiles}.")
+
+                        # get the font with local helper function because it depends on config
+                        font = _get_font()
                         # Save and animate the image capture tiles
                         if save_and_animate == 'y':
                             # Save and animate the tiles
-                            result = visualizer.animate_tile_stack(tiles_gdf, aoi)
+                            result = visualizer.animate_tile_stack(tiles_gdf, aoi, font)
 
                             # Check for valid result before proceeding
                             if result:
@@ -125,15 +155,15 @@ def main():
                                 animation_filename = ""
                                 logging.warning("Animation not created. Skipping...")
                                 continue
-                        
+
                         master_map = visualizer.update_map_with_tiles(master_map, tiles_gdf, animation_filename, aoi)
                         # fig_obj = visualizer.cloud_heatmap(tiles_gdf, fig_obj)
 
             if master_map:
                 master_map_filename = f"maps/Search_Results_Map_{now.strftime('%Y-%m-%d_%H-%M-%S')}.html"
                 master_map.save(master_map_filename)  # Save the master_map to a file
-                # webbrowser.open(master_map_filename)  # Open the saved file in the browser  
-                
+                # webbrowser.open(master_map_filename)  # Open the saved file in the browser
+
         elif user_choice == '2': # Search and Plot Images With Thumbnail.
             logging.warning("Searching and Plotting Images With Browse Images.")
             # Open the file dialog to select the GeoJSON file
@@ -149,11 +179,11 @@ def main():
             else:
                 logging.warning("No geojson file!")
                 break
-            
+
             # Format the dates to string (YYYY-MM-DD)
             # Get the current date and calculate the date one month prior
             now = datetime.utcnow()
-            one_month_ago = now - relativedelta(months=1) 
+            one_month_ago = now - relativedelta(months=1)
             end_date_str = now.strftime('%Y-%m-%d')
             one_month_ago_str = one_month_ago.strftime('%Y-%m-%d')
             search_start_date = input("Enter start date (YYYY-MM-DD) or press enter for 1 month ago: ") or one_month_ago_str
@@ -162,15 +192,15 @@ def main():
 
             # Search The Archive
             tiles_gdf, num_tiles, num_captures = searcher.search_archive(heatmap_aoi, search_start_date, search_end_date)
-            
+
             logging.warning(f"Search complete! Num Tiles: {num_tiles}, Num Captures: {num_captures}")
-            
-            if num_tiles > 0:                
+
+            if num_tiles > 0:
                 # Sort by capture date
                 tiles_gdf.sort_values('capture_date', ascending=False, inplace=True)
-            
+
                 folium_basemap = visualizer.create_folium_basemap(tiles_gdf)
-         
+
                 now = datetime.now().strftime("%Y-%m-%dT%H%M%SZ")
                 filename = f'maps/Basemap_{now}.html'
                 folium_basemap.save(filename)
@@ -179,7 +209,7 @@ def main():
             else:
                 logging.warning("No tiles found!")
                 continue
-            
+
             continue
         elif user_choice == '8': # Manage Taskings.
             while True:
@@ -198,7 +228,7 @@ def main():
                 if sub_choice == '1':  # Create new tasking via API
 
                     task_params = gather_task_inputs()
-                    
+
                     tasking_df = tasker.create_new_tasking(task_params)
                     print(f"Tasking Result: {tasking_df}")
                     continue
@@ -254,11 +284,11 @@ def main():
             else:
                 logging.warning("No geojson file!")
                 break
-            
+
             # Format the dates to string (YYYY-MM-DD)
             # Get the current date and calculate the date one month prior
             now = datetime.utcnow()
-            one_month_ago = now - relativedelta(months=1) 
+            one_month_ago = now - relativedelta(months=1)
             end_date_str = now.strftime('%Y-%m-%d')
             one_month_ago_str = one_month_ago.strftime('%Y-%m-%d')
             search_start_date = input("Enter start date (YYYY-MM-DD) or press enter for 1 month ago: ") or one_month_ago_str
@@ -271,23 +301,23 @@ def main():
             if num_tiles > 0:
                 # Sort by age so that youngest tiles are last (and thus displayed on top)
                 hmap = visualizer.age_heatmap(tiles_gdf, out_filename=None)
-            
+
                 logging.warning("Heat Map Complete: maps folder...")
             else:
                 logging.warning("No tiles found!")
                 continue
-        
+
         elif user_choice == '9': # Download Tiles For BBox
             place = input(f"Enter the place name or lat,lon in dec. deg.: ")
             lat, lon = get_lat_long_from_place(place)
             points = [{'lat': lat, 'lon': lon}]
-            
+
             # Set the Bbox width
             width = float(input("Provide search box width (km):"))
-            
+
             # Get the current date and calculate the date one month prior
             now = datetime.now()
-            one_month_ago = now - relativedelta(months=1) 
+            one_month_ago = now - relativedelta(months=1)
 
             # Format the dates to string (YYYY-MM-DD)
             end_date_str = now.strftime('%Y-%m-%d')
@@ -296,21 +326,21 @@ def main():
             start_date = input("Enter start date (YYYY-MM-DD) or press enter for 1 month ago: ") or one_month_ago_str
             end_date = input("Enter end date (YYYY-MM-DD) or press enter for now: ") or end_date_str
             logging.info(f"Date Range For Search: {start_date} - {end_date}")
-            
+
             # Create aois_list
             aois_list, points_list = searcher.create_aois_from_points(points, width)
-            
+
             # Loop through the bbox aois and search and append the results to the map.
             logging.info(f"Number of AOIs Entered: {len(aois_list)}.")
-            
+
             for index, aoi in enumerate(aois_list):
                 logging.info(f"Processing AOI #: {index+1}")
                 tiles_gdf, num_tiles, num_captures = searcher.search_archive(aoi, start_date, end_date)
-                               
+
                 if num_tiles >0:
                     # We want to save the tiles into their respective captures to then animate them.
                     logging.warning(f"Total Captures: {num_captures}, Total Tiles: {num_tiles}.")
-                    
+
                     # Save tiles into a directory for this job with.
                     searcher.save_tiles(tiles_gdf) # tiles_gdf is stored inside searcher after search.
 
@@ -331,11 +361,11 @@ def main():
             else:
                 logging.warning("No geojson file!")
                 break
-            
+
             # Format the dates to string (YYYY-MM-DD)
             # Get the current date and calculate the date one month prior
             now = datetime.utcnow()
-            one_month_ago = now - relativedelta(months=1) 
+            one_month_ago = now - relativedelta(months=1)
             end_date_str = now.strftime('%Y-%m-%d')
             one_month_ago_str = one_month_ago.strftime('%Y-%m-%d')
             search_start_date = input("Enter start date (YYYY-MM-DD) or press enter for 1 month ago: ") or one_month_ago_str
@@ -343,17 +373,17 @@ def main():
             logging.warning(f"Date Range For Search: {search_start_date} - {search_end_date}")
 
             tiles_gdf, num_tiles, num_captures = searcher.search_archive(heatmap_aoi, search_start_date, search_end_date)
- 
+
             logging.warning(f"Search complete! Num Tiles: {num_tiles}, Num Captures: {num_captures}")
             if num_tiles > 0:
                 # Create the heatmap for the data.
                 hmap = visualizer.count_heatmap(tiles_gdf)
-            
+
                 logging.warning(f"Heat Map Complete with Num_Tiles: {num_tiles}, Num_Captures: {num_captures}")
             else:
                 logging.warning("No tiles found!")
                 continue
-            
+
         elif user_choice == '3': # Create Cloud Free Tile Basemap - Works but seem like non-sense?
             logging.warning("Create Cloud Free Tile Basemap.")
             # Open the file dialog to select the GeoJSON file
@@ -369,11 +399,11 @@ def main():
             else:
                 logging.warning("No geojson file!")
                 break
-            
+
             # Format the dates to string (YYYY-MM-DD)
             # Get the current date and calculate the date one month prior
             now = datetime.utcnow()
-            one_month_ago = now - relativedelta(months=1) 
+            one_month_ago = now - relativedelta(months=1)
             end_date_str = now.strftime('%Y-%m-%d')
             one_month_ago_str = one_month_ago.strftime('%Y-%m-%d')
             search_start_date = input("Enter start date (YYYY-MM-DD) or press enter for 1 month ago: ") or one_month_ago_str
@@ -382,14 +412,14 @@ def main():
 
             # Search The Archive
             tiles_gdf, num_tiles, num_captures = searcher.search_archive(heatmap_aoi, search_start_date, search_end_date)
-            
+
             logging.warning(f"Search complete! Num Tiles: {num_tiles}, Num Captures: {num_captures}")
-            
+
             if num_tiles > 0:
                 latest_cloud_free_tiles = visualizer.filter_and_sort_tiles(tiles_gdf)
-            
+
                 folium_basemap = visualizer.create_folium_basemap(latest_cloud_free_tiles)
-         
+
                 now = datetime.now().strftime("%Y-%m-%dT%H%M%SZ")
                 filename = f'maps/Basemap_{now}.html'
                 folium_basemap.save(filename)
@@ -399,7 +429,7 @@ def main():
             else:
                 logging.warning("No tiles found!")
                 continue
-            
+
             continue
         elif user_choice == '6': # Create for heat map for cloud cover for latest tiles.
             # Open the file dialog to select the GeoJSON file
@@ -415,11 +445,11 @@ def main():
             else:
                 logging.warning("No geojson file!")
                 break
-            
+
             # Format the dates to string (YYYY-MM-DD)
             # Get the current date and calculate the date one month prior
             now = datetime.utcnow()
-            one_month_ago = now - relativedelta(months=1) 
+            one_month_ago = now - relativedelta(months=1)
             end_date_str = now.strftime('%Y-%m-%d')
             one_month_ago_str = one_month_ago.strftime('%Y-%m-%d')
             search_start_date = input("Enter start date (YYYY-MM-DD) or press enter for 1 month ago: ") or one_month_ago_str
@@ -431,7 +461,7 @@ def main():
 
             if num_tiles > 0:
                 fig_obj = visualizer.cloud_heatmap(tiles_gdf)
-                
+
                 logging.warning("Heat Map Complete And Saved To Maps Folder...")
             else:
                 logging.warning("No Tiles Found.")
@@ -446,4 +476,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-
