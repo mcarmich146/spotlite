@@ -259,7 +259,7 @@ class Searcher:
     def _date_range_chunks(self, start_date, end_date, chunk_size_days=14):
         start = datetime.fromisoformat(start_date)
         end = datetime.fromisoformat(end_date)
-        delta = timedelta(days=chunk_size_days)  # Roughly two months
+        delta = timedelta(days=chunk_size_days)  # default two weeks
 
         while start < end:
             chunk_end = min(start + delta, end)
