@@ -5,7 +5,6 @@
 # This file is subject to the terms and conditions defined in the file 'LICENSE',
 # which is part of this source code package.
 
-import json
 import requests
 import pandas as pd
 import folium
@@ -14,7 +13,6 @@ import os
 import re
 import datetime
 from datetime import datetime
-import webbrowser
 import logging
 
 logger = logging.getLogger(__name__)

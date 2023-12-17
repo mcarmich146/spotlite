@@ -2,7 +2,7 @@ from setuptools import setup, find_packages
 
 setup(
     name='spotlite',  # Replace with your package's name
-    version='0.1.0',  # Replace with your package's version
+    version='0.2.0',  # Replace with your package's version
     author='Mark',  # Replace with your name
     author_email='your.email@example.com',  # Replace with your email
     description='Package to simplify working with Satellogic APIs',  # Provide a short description
@@ -83,7 +83,7 @@ setup(
         'Intended Audience :: Developers',
         'License :: OSI Approved :: MIT License',  # Choose the appropriate license
         'Programming Language :: Python :: 3',
-        'Programming Language :: Python :: 3.11.5',
+        'Programming Language :: Python :: 3.11',
     ],
     python_requires='>=3.11.5',  # Specify the Python versions you support here
     entry_points={

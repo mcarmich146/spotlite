@@ -33,7 +33,6 @@ from PIL import Image
 from datetime import datetime
 import imageio
 from PIL import ImageDraw, ImageFont
-import config
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from rasterio.warp import reproject, Resampling
 from pathlib import Path
