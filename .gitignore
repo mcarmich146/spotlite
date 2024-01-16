@@ -10,6 +10,7 @@ venv/
 config.py
 __pycache__/
 dist/
+build/
 
 # These are are for catching invalid Tiles.
 invalid_outcome_ids/

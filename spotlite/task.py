@@ -14,11 +14,14 @@ import re
 import datetime
 from datetime import datetime
 import logging
+import json
+import time
+from pathlib import Path
 
 logger = logging.getLogger(__name__)
 
 class TaskingManager:
-    def __init__(self, key_id="", key_secret=""): #must initialize with Keys.
+    def __init__(self, key_id="", key_secret="", check_interval=10, monitor_db_path="databases/task_monitor_db.geojson"): #must initialize with Keys.
         self.tasks_url = "https://api.satellogic.com/tasking/tasks/"
         self.products_url = "https://api.satellogic.com/tasking/products/"
         self.clients_url = "https://api.satellogic.com/tasking/clients/"
@@ -26,8 +29,10 @@ class TaskingManager:
         self.key_id = key_id
         self.key_secret = key_secret
         self.headers = {"authorizationToken":f"Key,Secret {self.key_id},{self.key_secret}"}
+        self.check_interval = check_interval
+        self.task_monitor_db_path = Path(monitor_db_path)
+        self.task_statuses = self.load_task_statuses()
         self._param = None  # Initialize _param for the property
-
 
     @property
     def param(self):
@@ -37,25 +42,7 @@ class TaskingManager:
     def param(self, value):
         self._param = value
 
-
-    def query_available_tasking_products(self): # Validated
-        try:
-            # Use api_call to get the JSON response
-            response_json = self._api_call(self.products_url)
-
-            # If the DataFrame contains data, return it
-            if response_json is not None and not response_json.empty:
-                return response_json
-            else:
-                logger.info("No data returned from API.")
-                return None
-        except Exception as e:
-            logger.info(f"An error occurred: {e}")
-            return None
-
-        # Products are defined by product id. Please find below a list of all available products.
-        # Product 169: 'Multispectral 70cm' is Multispectral 70cm Super resolution image also centered around a pair of coordinates  (POI only, 5x10km)
-
+    
     def check_account_config(self): # Validated
         try:
             # Use api_call to get the JSON response
@@ -70,6 +57,10 @@ class TaskingManager:
         except Exception as e:
             logger.info(f"An error occurred: {e}")
             return None
+
+    def list_tasks(self):
+        """List all tasks associated with this account"""
+
 
     def query_tasks_by_status(self, status=""): #Validated
         """Validate the status input and set the statusparams accordingly."""
@@ -308,3 +299,88 @@ class TaskingManager:
         except requests.RequestException as e:
             logger.info(f"API request failed: {e}")
             return None
+
+    def load_task_statuses(self):
+        """Load task statuses from the GeoJSON file."""
+        if self.task_monitor_db_path.exists():
+            with open(self.task_monitor_db_path, 'r') as file:
+                data = json.load(file)
+                return {feature['properties']['task_id']: feature['properties'] for feature in data['features']}
+        return {}
+
+    def save_task_statuses(self):
+        """Save task statuses to the GeoJSON file."""
+        features = [
+            {
+                "type": "Feature",
+                "properties": status,
+                "geometry": None  # No geometry data for tasks
+            }
+            for status in self.task_statuses.values()
+        ]
+        geojson_data = {"type": "FeatureCollection", "features": features}
+        with open(self.task_monitor_db_path, 'w') as file:
+            json.dump(geojson_data, file, indent=4)
+
+    def query_available_tasking_products(self): # Validated
+        try:
+            # Use api_call to get the JSON response
+            response_data_frame = self._api_call(self.products_url)
+
+            # If the DataFrame contains data, return it
+            if response_data_frame is not None and not response_data_frame.empty:
+                return response_data_frame
+            else:
+                logger.info("No data returned from API.")
+                return None
+        except Exception as e:
+            logger.info(f"An error occurred: {e}")
+            return None
+
+        # Products are defined by product id. Please find below a list of all available products.
+        # Product 169: 'Multispectral 70cm' is Multispectral 70cm Super resolution image also centered around a pair of coordinates  (POI only, 5x10km)
+
+
+    def check_for_status_update(self):
+        """Tasking Status Change Monitor
+        Check for any status updates on the tasks."""
+        df = self.query_tasks_by_status()
+        if df is not None and not df.empty:
+            task_list = df.to_dict(orient='records')
+            
+            # Run through the task list data to extract and compare the data previous vs current.
+            for task in task_list:
+                task_id = task.get('task_id')
+                new_status = {
+                    'task_id': task_id,
+                    'task_name': task.get('task_name'),
+                    'project_name': task.get('project_name'),
+                    'status': task.get('status')
+                }
+
+                # Compare with old status
+                old_status = self.task_statuses.get(task_id, {}).get('status')
+                if new_status['status'] != old_status:
+                    # Update the status
+                    self.task_statuses[task_id] = new_status
+
+                    if new_status['status'] == 'completed':
+                        print(f"Task {task_id} completed.")
+                        # Notify user about task completion
+
+            # Save updated statuses to GeoJSON file
+            self.save_task_statuses()
+            
+        else:
+            logger.error("Found No Tasks While Querying Tasks During Monitoring. API call failed or task list is empty.")
+            return
+
+    def monitor_task_status(self, check_interval=600):
+        """Start the monitoring process."""
+        # If the caller overrides the interval then we reset the self.check_interval.
+        self.check_interval = check_interval
+
+        while True:
+            self.check_for_status_update()
+            time.sleep(int(self.check_interval))
+
