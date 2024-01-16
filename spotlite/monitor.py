@@ -5,36 +5,19 @@
 # This file is subject to the terms and conditions defined in the file 'LICENSE',
 # which is part of this source code package.
 # 
-# Class Searcher Methods
-#   TBC
+
 
 from typing import Tuple, Dict, Optional, List, Type
 import time
+from time import sleep
 import schedule
 import logging
-from shapely.geometry import Polygon, Point, box
-import os
-import geopandas as gpd
-from pandas.core.groupby import DataFrameGroupBy
 import pandas as pd
-from pystac import ItemCollection
-from pystac_client import Client
 from datetime import datetime, timedelta
-from concurrent.futures import ThreadPoolExecutor, as_completed
-import logging
-import requests
-from geopy.distance import distance
-from time import sleep
 import json
-import geopandas as gpd
-from shapely.geometry import shape
 import os
-import uuid
-import smtplib
-import json
 import geojson
 from datetime import datetime, timedelta
-import config
 import base64
 from email.mime.text import MIMEText
 from google_auth_oauthlib.flow import InstalledAppFlow
@@ -44,10 +27,7 @@ from googleapiclient.discovery import build
 from requests import HTTPError
 from selenium import webdriver
 from email.mime.multipart import MIMEMultipart
-from email.mime.image import MIMEImage
-from shapely.geometry import Polygon, Point, box
-import logging
-import pandas as pd
+from shapely.geometry import Polygon, Point, box, shape
 from .tile import TileManager
 
 
