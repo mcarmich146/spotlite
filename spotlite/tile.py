@@ -581,6 +581,7 @@ class TileManager:
 
         # Group by outcome_id since the tiles in a group have different times according to capture
         grouped = self.group_by_outcome_id(tiles_gdf)
+
         # Print the results to the log.
         num_captures = 0
         for outcome_id, group in grouped:
@@ -597,7 +598,7 @@ class TileManager:
             product_version = group.iloc[0]['satl:product_version']
             capture_date = group.iloc[0]['capture_date']
 
-            logger.warning(f"Capture Date: {capture_date}, Outcome ID: {outcome_id}, Tile Count: {tile_count}, Cloud Cover: {cloud_cover_mean:.0f}%, Prod. Ver.: {product_version}")
+            logger.warning(f"Capture Date: {capture_date}, Outcome ID: {outcome_id}, Tile Count: {tile_count}, Cloud Cover: {cloud_cover_mean:.0f}%")
             num_captures = num_captures + 1
 
         # Return the search results

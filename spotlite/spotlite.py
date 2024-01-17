@@ -9,22 +9,13 @@
 
 from typing import Tuple, Dict, Optional, List, Type
 from shapely.geometry import Polygon, Point, box
-import os
-import shutil
-import sys
 import webbrowser
 from datetime import datetime
 from pathlib import Path
 import geopandas as gpd
 from pandas.core.groupby import DataFrameGroupBy
-import pandas as pd
-from pystac import ItemCollection
-from pystac_client import Client
 from datetime import datetime, timedelta
-from concurrent.futures import ThreadPoolExecutor, as_completed
 import logging
-import requests
-from geopy.distance import distance
 from PIL import ImageFont
 
 from .tile import TileManager

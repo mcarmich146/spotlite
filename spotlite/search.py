@@ -51,6 +51,8 @@ class Searcher:
 
     # Main function to handle multi-threading based on date ranges
     def search_archive(self, aoi: Polygon, start_date: str, end_date: str):
+        search_start_timestamp = datetime.now()
+
         # Generate date chunks
         date_chunks = list(self._date_range_chunks(start_date, end_date))
 
@@ -61,7 +63,7 @@ class Searcher:
 
         self._show_progress_bar(0, num_chunks)
         # Use ThreadPoolExecutor to run searches in parallel
-        with ThreadPoolExecutor(max_workers=5) as executor:
+        with ThreadPoolExecutor(max_workers=10) as executor:
             # Create a dictionary to hold futures
             future_to_date = {
                 executor.submit(self._search_with_dates, aoi, chunk_start, chunk_end): (chunk_start, chunk_end)
@@ -107,6 +109,10 @@ class Searcher:
         # Combine all GeoDataFrames into one
         tiles_gdf = pd.concat(all_gdfs, ignore_index=True)
  
+        search_end_timestamp = datetime.now()
+        total_search_duration = search_end_timestamp - search_start_timestamp
+        logger.warning(f"Total Search Duration: {total_search_duration}")
+
         # Return the search results
         return tiles_gdf
         
@@ -128,7 +134,7 @@ class Searcher:
         return archive
 
     # Function to split the date range into two-week chunks
-    def _date_range_chunks(self, start_date: str, end_date: str, chunk_size_days=14):
+    def _date_range_chunks(self, start_date: str, end_date: str, chunk_size_days=30):
         start = datetime.fromisoformat(start_date)
         end = datetime.fromisoformat(end_date)
         delta = timedelta(days=chunk_size_days)  # default two weeks
@@ -140,14 +146,18 @@ class Searcher:
 
     # Modified search function to accept start and end dates
     def _search_with_dates(self, aoi, start_date, end_date):
+        start_timestamp = datetime.now()
         try:
             # Connect To The Archive
             archive = self._connect_to_archive()
             logger.debug("Connected To Archive")
 
+            db_connect_now = datetime.now()
+            db_duration = db_connect_now - start_timestamp
+            # logger.debug(f"DB CONNECT DURATION: {db_duration}")
             if not archive:
                 logger.error("Failed to connect to archive.")
-                return None, 0, 0
+                return None
             logger.debug(f"Start-End: {start_date}-{end_date}")
             items = archive.search(
                 intersects=aoi,
@@ -157,7 +167,8 @@ class Searcher:
             ).item_collection()
 
             logger.debug(f"Search Complete for period: {start_date} to {end_date}!")
-
+            search_done_now = datetime.now()
+            logger.debug(f"Search Duration: {search_done_now - db_connect_now}")
             if items is None:
                 logger.debug(f"No results returned for period: {start_date} to {end_date}")
                 return None
@@ -196,8 +207,6 @@ class Searcher:
         if first_item is not None:
             first_epsg_code_number = first_item.properties.get('proj:epsg', None)
             first_epsg_code = f"epsg:{first_epsg_code_number}"
-            # logger.info(f"epsg_code_input: {epsg_code_input}")
-            # logger.info(f"first_epsg_code: {first_epsg_code}")
         else:
             print("The collection is empty.")
             return False
