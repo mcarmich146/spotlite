@@ -135,8 +135,6 @@ class Spotlite:
 
             now = datetime.now()
 
-            # chunk_start_str = chunk_start.split('T')[0]  # Split by 'T' and take the first part (date)
-            # chunk_end_str = chunk_end.split('T')[0]
             out_filename = f"maps/Footprints_{chunk_start_str}-{chunk_end_str}_Created-{now.strftime('%Y-%m-%d_%H-%M-%S')}.geojson"
             
             try:
@@ -149,14 +147,11 @@ class Spotlite:
         
         return True
 
-    def monitor_subscriptions_for_captures(self, subscriptions_file_path=None):
+    def monitor_subscriptions_for_captures(self, period_int=None, subscriptions_file_path_str=None):
         """Start The Subscription Monitor - searches AOI for new captures in the past period
         and sends an email to a defined list of people."""
 
-        if subscriptions_file_path is None:
-            self.monitor = MonitorAgent(self.key_id, self.key_secret)
-        else:
-            self.monitor = MonitorAgent(self.key_id, self.key_secret, subscriptions_file_path)
+        self.monitor = MonitorAgent(self.key_id, self.key_secret, period_int, subscriptions_file_path_str)
 
         # Start the Monitor
         try:

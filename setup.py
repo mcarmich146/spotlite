@@ -2,7 +2,7 @@ from setuptools import setup, find_packages
 
 setup(
     name='spotlite',  # Replace with your package's name
-    version='0.5.0',  # Replace with your package's version
+    version='0.6.0',  # Replace with your package's version
     author='Mark',  # Replace with your name
     author_email='your.email@example.com',  # Replace with your email
     description='Package to simplify working with Satellogic APIs',  # Provide a short description

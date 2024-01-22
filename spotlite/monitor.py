@@ -13,6 +13,7 @@ from time import sleep
 import schedule
 import logging
 import pandas as pd
+import geopandas as gpd
 from datetime import datetime, timedelta
 import json
 import os
@@ -20,6 +21,7 @@ import geojson
 from datetime import datetime, timedelta
 import base64
 from email.mime.text import MIMEText
+from email.mime.image import MIMEImage
 from google_auth_oauthlib.flow import InstalledAppFlow
 from google.oauth2.credentials import Credentials
 from google.auth.transport.requests import Request
@@ -38,12 +40,20 @@ SCOPES = ["https://www.googleapis.com/auth/gmail.send"]
 tiles_gdf = None
     
 class MonitorAgent:
-    def __init__(self, key_id="", key_secret="", subscriptions_file_path="databases/subscriptions.geojson"):
+    def __init__(self, key_id="", key_secret="", period=None, subscriptions_file_path=None):
         # Assigning default values to instance attributes
         self.key_id = key_id
         self.key_secret = key_secret
-        self.subscriptions_file_path = subscriptions_file_path
-        self.period = 240 #minutes
+        if subscriptions_file_path is None:
+            self.subscriptions_file_path = "databases/subscriptions.geojson"
+        else:
+            self.subscriptions_file_path = subscriptions_file_path
+
+        if period is None:
+            self.period = 240 #minutes
+        else:
+            self.period = int(period)
+
         self._param = None  # Initialize _param for the property
         self.tile_manager = TileManager(key_id, key_secret)
 
@@ -60,7 +70,7 @@ class MonitorAgent:
         """Starts the monitoring process and runs it until cancelled.
         Uses the contents of the subscriptions_file_path to drive the behavior."""
         
-        logger.warning(f"Using Subscription File: {self.subscriptions_file_path}")
+        logger.warning(f"Using TEST Subscription File: {self.subscriptions_file_path}")
 
         # Start the monitoring loop
         # Run the search right away to help with debugging.
@@ -87,11 +97,11 @@ class MonitorAgent:
             minx, miny, maxx, maxy = shapely_polygon.bounds  # Get the bounding box coordinates
             aoi = box(minx, miny, maxx, maxy) 
 
-            foundTiles, _, sorted_aggregated_df, tiles_path_html, cloud_path_html = self._check_archive(aoi, self.period, subscription_name)  # adjusted to receive gdf_grouped
+            foundTiles, _, sorted_aggregated_df, footprints_geojson_path, previews_filenames = self._check_archive(aoi, self.period, subscription_name)  # adjusted to receive gdf_grouped
             if foundTiles == True:
                 email_body, email_subject= self._format_email_body_subject(subscription_name, sorted_aggregated_df)
                 to_emails = ', '.join(user_emails)  # Join all emails into a single string
-                self._send_email(to_emails, email_subject, email_body, tiles_path_html, cloud_path_html)
+                self._send_email(to_emails, email_subject, email_body, footprints_geojson_path, previews_filenames)
             else:
                 logger.error(f"No Images Found In This Search Polygon.")
             
@@ -118,94 +128,76 @@ class MonitorAgent:
         
         # If no tiles found then return False.
         if num_tiles == 0:
-            return False, 0, None, None, None  # adjusted to return 0 and None for consistency
+            return False, 0, None, None  
         
         grouped = self.tile_manager.group_by_outcome_id(tiles_gdf)
 
-        # Aggregate data: Get the first capture_date and outcome_id, and mean cloud cover for each group
-        aggregated_data = []
-        for outcome_id, group in grouped:
-            capture_date = group.iloc[0]['capture_date']
-            cloud_cover_mean = group['eo:cloud_cover'].mean()
-            aggregated_data.append({'outcome_id': outcome_id, 
-                                    'capture_date': capture_date, 
-                                    'mean_cloud_cover': cloud_cover_mean})
+        # Create a new GeoDataFrame to store results
+        output_gdf = gpd.GeoDataFrame(columns=['outcome_id', 'cloud_cover_mean', 'capture_date', 'geometry'])
 
-        # Create a DataFrame from the aggregated data
-        aggregated_df = pd.DataFrame(aggregated_data)
+        rows_list = []
+
+        for outcome_id, group in grouped:
+            cloud_cover_mean = int(round(group['eo:cloud_cover'].mean()))
+            combined_footprint = group.geometry.unary_union
+            capture_date = group.iloc[0]['capture_date']
+
+            # Add the information to the new GeoDataFrame
+            rows_list.append({
+                'outcome_id': outcome_id, 
+                'cloud_cover_mean': cloud_cover_mean, 
+                'capture_date': capture_date, 
+                'geometry': combined_footprint
+            })
+        
+        output_gdf = gpd.GeoDataFrame(rows_list)
+
+        # write out the footprints file
+        now = datetime.now()
+        str_start_date = start_date.strftime('%Y-%m-%dT%H-%M-%S')
+        str_end_date = end_date.strftime('%Y-%m-%dT%H-%M-%S')
+        footprints_filename = f"maps/Footprints_{str_start_date}-{str_end_date}_Created-{now.strftime('%Y-%m-%d_%H-%M-%S')}.geojson"
+        
+        try:
+            output_gdf.to_file(footprints_filename, driver='GeoJSON')
+            logger.debug(f"Footprint File Saved: {footprints_filename}")
+        except Exception as e:  # Correct syntax and catch general exception
+            logging.error(f"Failed to write footprint file: {e}")
+            return False, 0, None, None
 
         # Sort the DataFrame by capture_date in descending order
-        sorted_aggregated_df = aggregated_df.sort_values(by='capture_date', ascending=False)
+        sorted_aggregated_df = output_gdf.sort_values(by='capture_date', ascending=False)
 
-        # Create the map
-        lat, lon = self._compute_centroid(aoi_box) 
+        previews_filenames = self.tile_manager.create_preview_jpegs(tiles_gdf)
 
-        points_list = [Point(lon, lat)]
-
-        aois_list = [aoi_box]
+        return True, len(tiles_gdf), sorted_aggregated_df, footprints_filename, previews_filenames
         
-        folium_map = self.tile_manager.create_folium_map(points_list, aois_list)
-
-        animation_filename = None
-        
-        # Create filenames with the current datetime
-        current_datetime_str = datetime.utcnow().strftime('%Y-%m-%dT%H-%M-%SZ')
-        folium_map_path_html = f"maps/Tiles_{current_datetime_str}.html"
-        cloud_map_path_html = f"maps/Cloud_{current_datetime_str}.html"
-
-        folium_map = self.tile_manager.update_map_with_footprints(folium_map, tiles_gdf, animation_filename, aoi_box)  
-        cloud_map = self.tile_manager.cloud_heatmap(tiles_gdf)
-
-        # Save the folium map
-        folium_map.save(folium_map_path_html)
-
-        # Save the cloud map as HTML
-        cloud_map.write_html(cloud_map_path_html)
-                    
-        return True, len(tiles_gdf), sorted_aggregated_df, folium_map_path_html, cloud_map_path_html
-        
-
-
-    def _send_email(self, to_email, subject, body, folium_html_path=None, plotly_html_path=None):
+    def _send_email(self, to_email, subject, body, footprints_geojson_path:str, previews_filenames: List):
         service = self._build_service()
         
         # Create a MIMEMultipart message
         msg = MIMEMultipart()
-        msg['bcc'] = to_email
-        msg['subject'] = subject
+        msg['To'] = ""
+        msg['Bcc'] = to_email
+        msg['Subject'] = subject
 
         # Attach the body text
         msg.attach(MIMEText(body, 'html'))
 
-        # # Attach the tiles image
-        # if folium_png_path:
-        #     with open(folium_png_path, 'rb') as img:
-        #         mime_img = MIMEImage(img.read())
-        #         mime_img.add_header('Content-ID', 'TilesMap')  # The image ID should match the one used in the body
-        #         mime_img.add_header("Content-Disposition", "attachment", filename="tiles_map.png")
-        #         msg.attach(mime_img)
-            
-        # # Attach the cloud image
-        # if plotly_png_path:
-        #     with open(plotly_png_path, 'rb') as img:
-        #         mime_img = MIMEImage(img.read())
-        #         mime_img.add_header('Content-ID', 'CloudMap')  # The image ID should match the one used in the body
-        #         mime_img.add_header("Content-Disposition", "attachment", filename="cloud_map.png")
-        #         msg.attach(mime_img)
-        
-        # Attach the HTML map
-        if folium_html_path:
-            with open(folium_html_path, 'r') as f:
-                mime_html = MIMEText(f.read(), 'html')
-                mime_html.add_header("Content-Disposition", "attachment", filename="tiles_map.html")
-                msg.attach(mime_html)
+        now = datetime.utcnow()
+        # Attach the footprints file
+        if footprints_geojson_path:
+            with open(footprints_geojson_path, 'r') as f:
+                mime_json = MIMEText(f.read(), 'application/json')
+                mime_json.add_header("Content-Disposition", "attachment", filename=f"Footprints_{now.strftime('%Y-%m-%dT%H-%M-%SZ')}.geojson")
+                msg.attach(mime_json)
 
-        # Attach the Cloud HTML map   
-        if plotly_html_path:
-            with open(plotly_html_path, 'r', encoding='utf-8') as f:
-                mime_html = MIMEText(f.read(), 'html')
-                mime_html.add_header("Content-Disposition", "attachment", filename="cloud_cover_heatmap.html")
-                msg.attach(mime_html)
+            # Attach each preview JPEG
+        for filename in previews_filenames:
+            with open(filename, 'rb') as f:
+                mime_image = MIMEImage(f.read())
+                mime_image.add_header("Content-Disposition", "attachment", filename=os.path.basename(filename))
+                msg.attach(mime_image)
 
         raw_msg = base64.urlsafe_b64encode(msg.as_bytes()).decode()
         create_message = {'raw': raw_msg}
@@ -231,7 +223,7 @@ class MonitorAgent:
             # Extract data from each row
             outcome_id = row['outcome_id']
             actual_capture_date = row['capture_date']
-            cloud_cover_percentage = int(row['mean_cloud_cover'])  # Assuming mean_cloud_cover is in decimal form
+            cloud_cover_percentage = int(row['cloud_cover_mean'])  # Assuming mean_cloud_cover is in decimal form
 
             # Format the date if it's a datetime object
             if isinstance(actual_capture_date, datetime):
@@ -245,7 +237,7 @@ class MonitorAgent:
                 <p>Thank you for choosing our service!</p>
                 <p>Best Regards From Your Team At Satellogic.</p>
                 <p></p>
-                <p>Note: to open the attached html map of the images you must download the file first.</p>
+                <p>Note: The attached geojson file contains the footprints of the listed captures.</p>
             </body>
         </html>
         """
@@ -311,7 +303,7 @@ class MonitorAgent:
 
         # Check if the file exists
         if not os.path.exists(subc_path):
-            logger.error("Subscription DB not present.")
+            logger.error(f"Subscription DB not present: {subc_path}")
             return None  # Or handle the error as needed
 
         with open(subc_path, 'r') as f:

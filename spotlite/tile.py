@@ -23,11 +23,19 @@
 
 from typing import Tuple, Dict, Optional, List, Type
 import os
+import math
+from io import BytesIO
 import numpy as np
 import geopandas as gpd
 from pandas.core.groupby import DataFrameGroupBy
 import pandas as pd
+import warnings
+from rasterio.errors import NotGeoreferencedWarning
 import rasterio
+from rasterio.enums import Resampling
+from rasterio.warp import reproject, Resampling
+from rasterio.transform import from_origin
+from rasterio.io import MemoryFile
 import requests
 import shutil
 import sys
@@ -40,9 +48,8 @@ from geopy.distance import distance
 from PIL import Image
 from datetime import datetime
 import imageio
-from PIL import ImageDraw, ImageFont
+from PIL import ImageDraw, ImageFont, Image
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from rasterio.warp import reproject, Resampling
 from pathlib import Path
 from packaging import version
 import logging
@@ -730,6 +737,32 @@ class TileManager:
 
         return bbox
 
+    def create_preview_jpegs(self, tiles_gdf) -> List:
+        """Takes a multi-capture list of tiles and returns a list of preview filenames"""
+        if tiles_gdf.empty:
+            logger.debug("No items found while creating preview files.")
+            return None
+        
+        output_filenames = []
+
+        now = datetime.now().strftime("%y-%m-%dT%H-%M-%S")
+
+        # Group the tiles by outcome_id
+        grouped_GPDF = self.group_by_outcome_id(tiles_gdf)
+
+        self._ensure_dir("images")
+        logger.warning("Preparing Previews-Thumbnails")
+        # Iterating through grouped data
+        for outcome_id, tiles_group in grouped_GPDF:
+            capture_date = tiles_group.iloc[0]['capture_date'] #use the first tile in the group.
+            
+            # Save the image as JPEG
+            output_filename = f"images/Preview_{capture_date}_{outcome_id}_{now}.JPEG"
+            output_filenames.append(output_filename)
+            
+            mosaic_image, out_trans = self._mosaic_preview_tiles(tiles_group, output_filename)
+
+        return output_filenames
 
     def _process_group(self, capture_date, outcome_id, group_df):
         if False == self._is_group_valid(group_df):
@@ -738,10 +771,8 @@ class TileManager:
 
         fname = f"CaptureDate_{capture_date.strftime('%Y%m%dT%H%M%S')}_MosaicCreated_{datetime.now().strftime('%Y%m%dT%H%M%S')}.tiff"
         full_path = os.path.join('images', fname)
-        self._mosaic_tiles(group_df, full_path)
+        self._mosaic_analytic_tiles(group_df, full_path)
         return full_path  # return the filename if the group is processed
-
-
 
     def _estimate_zoom_level(self, minx, miny, maxx, maxy):
         """Calculate the geographic extent."""
@@ -776,11 +807,12 @@ class TileManager:
         # print(f"Zoom: {zoom_level}")
         return zoom_level
 
-    def _mosaic_tiles(self, tiles_gdf, outfile):
+    def _mosaic_analytic_tiles(self, tiles_gdf, outfile=None):
         src_files_to_mosaic = []
 
         for _, tile in tiles_gdf.iterrows():
             # Open the satellite image file with rasterio
+            # If gen_preview is TRUE then we are doing this for Previews and not Analytics.
             url = tile['analytic_url']
             src = rasterio.open(url)
             src_files_to_mosaic.append(src)
@@ -790,6 +822,7 @@ class TileManager:
             if not self._is_version_valid(product_version):
                 logger.warning(f"Tile Version Incompatible: {outcome_id}, ProdVer: {product_version}")
 
+        # Create the mosaic
         mosaic, out_trans = merge(src_files_to_mosaic, indexes=[1, 2, 3])
 
         # Metadata for the mosaic
@@ -803,10 +836,103 @@ class TileManager:
             "dtype": mosaic.dtype
         }
 
-        with rasterio.open(outfile, "w", **meta) as dest:
-            dest.write(mosaic)
-        logger.warning(f"Mosaic Complete:{outfile}")
+        # Write the file out if a filename is provided.
+        if outfile is not None:
+            with rasterio.open(outfile, "w", **meta) as dest:
+                dest.write(mosaic)
+            logger.warning(f"Mosaic Complete:{outfile}")
 
+        return mosaic, meta
+
+
+    # def _georeference_preview(self, tile):
+    #     with rasterio.open(tile['preview_url']) as src:
+
+    #         min_x, min_y, max_x, max_y = shape(tile['geometry'].bounds)      
+            
+    #         pixel_size_x = (max_x - min_x) / src.width
+    #         pixel_size_y = (max_y - min_y) / src.height
+            
+    #         transform = from_origin(min_x, max_y, pixel_size_x, pixel_size_y)
+            
+    #         # Create a MemoryFile for the output
+    #         with MemoryFile() as memfile:
+    #             with memfile.open(driver='GTiff', height=src.height, width=src.width,
+    #                             count=src.count, dtype=src.dtypes[0], crs="epsg:4326", transform=transform) as dst:
+    #                 dst.write(src.read())
+
+    #             # After writing, open the MemoryFile for reading
+    #             with memfile.open() as dst:
+    #                 # You now have a dst that is a DatasetReader object containing the georeferenced data
+    #                 # You can return this object, or perform additional operations on it as needed
+    #                 return dst                
+    #         # with rasterio.open(outpath, 'w', driver='GTiff', height=src.height, width=src.width,
+    #         #                 count=src.count, dtype=src.dtypes[0], crs="epsg:4326", transform=transform) as dst:        
+    #         #     dst.write(src.read())
+    #     return None
+    
+
+    def _georeference_preview(self, tile):
+        # Suppress the specific warning
+        with warnings.catch_warnings():
+            warnings.simplefilter('ignore', NotGeoreferencedWarning)
+            # Open the thumbnail and georeference it.
+            with rasterio.open(tile['thumbnail_url']) as src:
+                
+                min_x, min_y, max_x, max_y = shape(tile['geometry']).bounds
+                
+                pixel_size_x = (max_x - min_x) / src.width
+                pixel_size_y = (max_y - min_y) / src.height
+                
+                transform = from_origin(min_x, max_y, pixel_size_x, pixel_size_y)
+                
+                # Create a MemoryFile for the output
+                with MemoryFile() as memfile:
+                    with memfile.open(driver='GTiff', height=src.height, width=src.width,
+                                    count=src.count, dtype=src.dtypes[0], crs="epsg:4326", transform=transform) as dst:
+                        dst.write(src.read())
+
+                    # After writing, open the MemoryFile for reading
+                    return memfile.open()  # Return an open DatasetReader
+    
+    def _mosaic_preview_tiles(self, tiles_group, output_path=None)->Image:
+        src_files_to_mosaic = []
+
+        # Loop through each row in the GeoDataFrame and create a list of georeferenced previews.
+        # Prepare for multi-threaded execution
+        with ThreadPoolExecutor(max_workers=25) as executor:  # Adjust max_workers as needed
+            # Start georeferencing and downsampling tasks
+            future_to_tile = {executor.submit(self._georeference_preview, row): row for _, row in tiles_group.iterrows()}
+
+            src_files_to_mosaic = []
+            for future in as_completed(future_to_tile):
+                try:
+                    result = future.result()
+                    src_files_to_mosaic.append(result)
+                except Exception as e:
+                    # Handle exceptions if any
+                    print(f"Exception occurred: {e}")
+
+
+        # merge all the georeferenced previews.
+        mosaic_src, out_trans = merge(src_files_to_mosaic, indexes=[1, 2, 3])
+
+        if output_path is not None:
+            # Define the metadata for the mosaic
+            out_meta = src_files_to_mosaic[0].meta.copy()
+            out_meta.update({
+                "driver": "PNG",
+                "height": mosaic_src.shape[1],
+                "width": mosaic_src.shape[2],
+                "transform": out_trans,
+                "count": 3
+            })
+
+            # Write the mosaic data to a PNG file
+            with rasterio.open(output_path, "w", **out_meta) as dest:
+                dest.write(mosaic_src)
+
+        return mosaic_src, out_trans
 
     def _is_version_valid(self, product_version):
         # Check that the version number is valid or not.
