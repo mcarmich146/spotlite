@@ -216,6 +216,9 @@ class Spotlite:
         else:
             logging.warning("No tiles found!")
 
+    def download_image(self, outcome_id: str, output_dir: str):
+        tiles_gdf = self.tile_manager.get_tiles_for_outcome_id(outcome_id)
+        self.tile_manager.download_tiles(tiles_gdf, output_dir) 
 
     def download_tiles(self, points: List[Dict[str, float]], width: float, start_date, end_date, output_dir=None):
         """"Downloads Tiles for a specified list of points with a width during a time period"""

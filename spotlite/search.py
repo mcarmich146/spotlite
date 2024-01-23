@@ -116,6 +116,38 @@ class Searcher:
         # Return the search results
         return tiles_gdf
         
+    def search_archive_for_outcome_id(self, outcome_id: str):
+        try:
+            # Connect To The Archive
+            archive = self._connect_to_archive()
+            logger.debug("Connected To Archive")
+
+            if not archive:
+                logger.error("Failed to connect to archive.")
+                return None
+
+            items = archive.search(
+                collections=["quickview-visual"],
+                query={"satl:product_name": {"eq": "QUICKVIEW_VISUAL"}, "satl:outcome_id": {"eq":outcome_id}},
+            ).item_collection()
+
+            if items is None or len(items) == 0:
+                logger.debug(f"No results returned for Outcome_ID: {outcome_id}")
+                return None
+
+            if not isinstance(items, ItemCollection):  
+                logger.error(f"Unexpected type returned: {type(items)}")
+                return None
+
+            logger.debug(f"Num Tiles Found: {len(items)}")
+
+            tiles_gdf = self._setup_GDF(items) 
+            return tiles_gdf
+
+        except Exception as e:
+            logger.error(f"Error during search for Outcome_ID: {outcome_id}: {e}")
+            return None
+        
     def _connect_to_archive(self):
         if self.is_internal_to_satl == True:
             logging.debug("Using Internal Archive Access.")

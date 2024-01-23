@@ -151,7 +151,7 @@ class TileManager:
     def download_tiles(self, tiles_gdf, output_dir=None):
 
         if tiles_gdf is None:
-            logger.warning("Search Output Not Initialized.  Run search_archive first.")
+            logger.warning("No Tiles Found When Downloading Tiles.")
             return False
         if tiles_gdf.empty:
             logger.warning("No items found to be animated.")
@@ -171,45 +171,44 @@ class TileManager:
 
         # Go through each tile and write out to the target location
         for index, (outcome_id, group) in enumerate(grouped_items_GPDF):
-            logger.debug(f"Processing Group: {index+1}")
+            logger.warning(f"Processing Capture Num: {index+1}, Outcome_Id: {outcome_id}")
             logger.debug(f"Len of Group: {len(group)}")
             
             tile_number = 1
             
             for id, tile_gdf in group.iterrows():
-                logger.debug(f"Processing Tile: {id+1}")
+                self._show_progress_bar(tile_number, len(group))
+
+                logger.debug(f"Processing Tile: {tile_number}")
                 # Check the tile cloud cover and reject if cloudy.
                 cloud_cover = tile_gdf['eo:cloud_cover']
-                logger.debug(f"Tile_GDF: {tile_gdf}")
+                # logger.debug(f"Tile_GDF: {tile_gdf}")
                 if cloud_cover is None:
                     logger.warning("Cloud cover information missing. Skipping tile...")
-                    continue
-                
-                # Check the tile cloud cover and reject if cloudy.
-                if cloud_cover > self.cloud_threshold:
-                    logger.info(f"Tile Rejected With Cloud Cover Of: {cloud_cover:.0f}")
-                    continue
-                url = tile_gdf['analytic_url']
-                capture_date_str = tile_gdf['capture_date'].strftime("%Y-%m-%dT%H%M%SZ")
-                tile_filename = os.path.join(directory_name, f"QuickView_Tile_CD_{capture_date_str}_ID_{tile_number}.tif")
-                logger.debug(f"Tile_filename: {tile_filename}")
-                logger.debug(f"Analytic URL: {url}")
+                elif cloud_cover > self.cloud_threshold:
+                    logger.debug(f"Tile Rejected With Cloud Cover Of: {cloud_cover:.0f}")
+                else:
+                    url = tile_gdf['analytic_url']
+                    logger.debug(f"Tile ID/Analytic URL: {tile_number}/{url}")
+                    capture_date_str = tile_gdf['capture_date'].strftime("%Y-%m-%dT%H%M%SZ")
+                    tile_filename = os.path.join(directory_name, f"L1B_Tile_CD_{capture_date_str}_ID_{tile_number}.tif")
+                    logger.debug(f"Tile_filename: {tile_filename}")
 
-                # Download and save the tile
-                try:
-                    with requests.get(url, stream=True) as r:
-                        r.raise_for_status()
-                        with open(tile_filename, 'wb') as f:
-                            shutil.copyfileobj(r.raw, f)
-                except Exception as e:
-                    logger.error(f"Failed to save tile: {e}")
-                    continue
+                    # Download and save the tile
+                    try:
+                        with requests.get(url, stream=True) as r:
+                            r.raise_for_status()
+                            with open(tile_filename, 'wb') as f:
+                                shutil.copyfileobj(r.raw, f)
+                    except Exception as e:
+                        logger.error(f"Failed to save tile: {e}")
 
                 
+                # Increment tile_number at the end of each iteration
                 tile_number += 1
-
-            self._show_progress_bar(index+1, len(grouped_items_GPDF))
-        self._show_progress_bar(len(grouped_items_GPDF), len(grouped_items_GPDF))
+            self._show_progress_bar(tile_number, len(group))
+            print("\n")
+        logger.warning("Tile Download Completed.") #add a new line after the progress bar.
         return True
 
     def group_by_capture_date(self, gdf: gpd.GeoDataFrame) -> DataFrameGroupBy:
@@ -575,6 +574,10 @@ class TileManager:
 
         return master_fig
 
+    def get_tiles_for_outcome_id(self, outcome_id: str):
+        """Gets tiles from the STAC Catalog based on the outcome_id for the image"""
+        tiles_gdf = self.searcher.search_archive_for_outcome_id(outcome_id)
+        return tiles_gdf
 
     def get_tiles(self, aoi: Polygon, start_date_str: str, end_date: str):
         """Gets tiles from the STAC Catalog"""
