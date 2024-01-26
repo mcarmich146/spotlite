@@ -149,21 +149,46 @@ class Searcher:
             return None
         
     def _connect_to_archive(self):
-        if self.is_internal_to_satl == True:
-            logging.debug("Using Internal Archive Access.")
-            archive = Client.open(self.internal_stac_api_url)
-        else:
-            API_KEY_ID = self.key_id
-            API_KEY_SECRET = self.key_secret
-            STAC_API_URL = self.stac_api_url
-            logger.debug("Using Credentials Archive Access")
-            headers = {"authorizationToken":f"Key,Secret {API_KEY_ID},{API_KEY_SECRET}"}
-            logger.debug(f"headers: {headers}")
+        try:
+            if self.is_internal_to_satl:
+                logging.debug("Using Internal Archive Access.")
+                archive = Client.open(self.internal_stac_api_url)
+            else:
+                API_KEY_ID = self.key_id
+                API_KEY_SECRET = self.key_secret
+                STAC_API_URL = self.stac_api_url
+                headers = {"authorizationToken": f"Key,Secret {API_KEY_ID},{API_KEY_SECRET}"}
+                
+                logging.debug("Using Credentials Archive Access with headers: %s", headers)
+                archive = Client.open(STAC_API_URL, headers=headers)
+                # Test connection
+                response = requests.get(STAC_API_URL, headers=headers)
+                response.raise_for_status()  # Will raise an HTTPError if the HTTP request returned an unsuccessful status code
+                logging.debug("Connection test successful with status code %s", response.status_code)
             
-            archive = Client.open(STAC_API_URL, headers=headers)
-            response = requests.get(STAC_API_URL, headers=headers)  # include your auth headers here
-            logger.debug(response.status_code)
-        return archive
+            return archive
+
+        except requests.exceptions.HTTPError as http_err:
+            logging.error("HTTP error occurred: %s", http_err)
+            return None
+        except Exception as e:
+            logging.error("Error occurred while connecting to archive: %s", e)
+            return None
+        # if self.is_internal_to_satl == True:
+        #     logging.debug("Using Internal Archive Access.")
+        #     archive = Client.open(self.internal_stac_api_url)
+        # else:
+        #     API_KEY_ID = self.key_id
+        #     API_KEY_SECRET = self.key_secret
+        #     STAC_API_URL = self.stac_api_url
+        #     logger.debug("Using Credentials Archive Access")
+        #     headers = {"authorizationToken":f"Key,Secret {API_KEY_ID},{API_KEY_SECRET}"}
+        #     logger.debug(f"headers: {headers}")
+            
+        #     archive = Client.open(STAC_API_URL, headers=headers)
+        #     response = requests.get(STAC_API_URL, headers=headers)  # include your auth headers here
+        #     logger.debug(response.status_code)
+        # return archive
 
     # Function to split the date range into two-week chunks
     def _date_range_chunks(self, start_date: str, end_date: str, chunk_size_days=30):

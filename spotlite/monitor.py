@@ -70,7 +70,7 @@ class MonitorAgent:
         """Starts the monitoring process and runs it until cancelled.
         Uses the contents of the subscriptions_file_path to drive the behavior."""
         
-        logger.warning(f"Using TEST Subscription File: {self.subscriptions_file_path}")
+        logger.warning(f"Using Subscription File: {self.subscriptions_file_path}")
 
         # Start the monitoring loop
         # Run the search right away to help with debugging.
@@ -128,7 +128,7 @@ class MonitorAgent:
         
         # If no tiles found then return False.
         if num_tiles == 0:
-            return False, 0, None, None  
+            return False, 0, None, None, None  
         
         grouped = self.tile_manager.group_by_outcome_id(tiles_gdf)
 
@@ -163,7 +163,7 @@ class MonitorAgent:
             logger.debug(f"Footprint File Saved: {footprints_filename}")
         except Exception as e:  # Correct syntax and catch general exception
             logging.error(f"Failed to write footprint file: {e}")
-            return False, 0, None, None
+            return False, 0, None, None, None
 
         # Sort the DataFrame by capture_date in descending order
         sorted_aggregated_df = output_gdf.sort_values(by='capture_date', ascending=False)
