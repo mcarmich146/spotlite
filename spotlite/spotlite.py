@@ -151,7 +151,9 @@ class Spotlite:
         """Start The Subscription Monitor - searches AOI for new captures in the past period
         and sends an email to a defined list of people."""
 
-        self.monitor = MonitorAgent(self.key_id, self.key_secret, period_int, subscriptions_file_path_str)
+        # Mechanism of timing of monitoring runs has changed, the period is in the subscriptions.geojson.
+        period_int = None
+        self.monitor = MonitorAgent(self.key_id, self.key_secret)
 
         # Start the Monitor
         try:

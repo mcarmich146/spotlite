@@ -49,11 +49,16 @@ class MonitorAgent:
         else:
             self.subscriptions_file_path = subscriptions_file_path
 
-        if period is None:
-            self.period = 240 #minutes
-        else:
+        # If Period is set then set this class's variable.
+        if period is not None:
             self.period = int(period)
-
+            self.is_period_set = True
+        else:
+            # Set period to 24 hours and use the new auto-run mechanism leveraging the geojson.
+            # This is used to define the time span of the tile search.
+            self.period = 1440  
+            self.is_period_set = False
+        
         self._param = None  # Initialize _param for the property
         self.tile_manager = TileManager(key_id, key_secret)
 
@@ -72,45 +77,50 @@ class MonitorAgent:
         
         logger.warning(f"Using Subscription File: {self.subscriptions_file_path}")
 
-        # Start the monitoring loop
-        # Run the search right away to help with debugging.
-        self.check_and_notify()
+        # Load subscription data
+        data = self.load_subscriptions()
 
-        # Set up the period between monitoring runs.
-        schedule.every(self.period).minutes.do(self.check_and_notify)
+        # Schedule tasks based on times in JSON file
+        for feature in data['features']:
+            if self.is_period_set is False: #doing time of day processing.
+                time_of_day = feature['properties'].get('local_processing_time')
+                if time_of_day:
+                    # self.check_and_notify(feature)
+                    schedule.every().day.at(time_of_day).do(self.check_and_notify, feature)
+                else:
+                    logger.error("Period mechanism using time of day to schedule, but time is not set correctly in subscriptions file.")
+            else: # doing periodic searches.
+                # Set up the period between monitoring runs.
+                schedule.every(self.period).minutes.do(self.check_and_notify, feature)
 
         # Keep running the schedule in a loop
         while True:
             schedule.run_pending()
             time.sleep(1)
 
+    def check_and_notify(self, feature):        
+        timer_start = datetime.now()
+        user_emails = feature['properties']['emails']  # Now we have a list
+        subscription_name = feature['properties']['subscription_name']
+        
+        geojson_polygon = feature['geometry']
+        shapely_polygon = shape(geojson_polygon)  # Convert GeoJSON to Shapely Polygon
+        minx, miny, maxx, maxy = shapely_polygon.bounds  # Get the bounding box coordinates
+        aoi = box(minx, miny, maxx, maxy) 
 
-    def check_and_notify(self):
-        data = self.load_subscriptions()
-        for feature in data['features']:
-            timer_start = datetime.now()
-            user_emails = feature['properties']['emails']  # Now we have a list
-            subscription_name = feature['properties']['subscription_name']
-            
-            geojson_polygon = feature['geometry']
-            shapely_polygon = shape(geojson_polygon)  # Convert GeoJSON to Shapely Polygon
-            minx, miny, maxx, maxy = shapely_polygon.bounds  # Get the bounding box coordinates
-            aoi = box(minx, miny, maxx, maxy) 
-
-            foundTiles, _, sorted_aggregated_df, footprints_geojson_path, previews_filenames = self._check_archive(aoi, self.period, subscription_name)  # adjusted to receive gdf_grouped
-            if foundTiles == True:
-                email_body, email_subject= self._format_email_body_subject(subscription_name, sorted_aggregated_df)
-                to_emails = ', '.join(user_emails)  # Join all emails into a single string
-                self._send_email(to_emails, email_subject, email_body, footprints_geojson_path, previews_filenames)
-            else:
-                logger.error(f"No Images Found In This Search Polygon.")
-            
-            timer_end = datetime.now()
-            duration = timer_end - timer_start
-            logger.warning(f"Search Completed At: {timer_end} local time.")
-            logger.warning(f"Search Processing Duration: {duration}")
-
-        logger.warning(f"Next Monitoring Run In {self.period} Minutes.")
+        foundTiles, _, sorted_aggregated_df, footprints_geojson_path, previews_filenames = self._check_archive(aoi, self.period, subscription_name)  # adjusted to receive gdf_grouped
+        if foundTiles == True:
+            email_body, email_subject= self._format_email_body_subject(subscription_name, sorted_aggregated_df)
+            to_emails = ', '.join(user_emails)  # Join all emails into a single string
+            self._send_email(to_emails, email_subject, email_body, footprints_geojson_path, previews_filenames)
+        else:
+            logger.error(f"No Images Found In This Search Polygon.")
+        
+        timer_end = datetime.now()
+        duration = timer_end - timer_start
+        logger.warning(f"Search Completed At: {timer_end} local time.")
+        logger.warning(f"Search Processing Duration: {duration}")
+        logger.warning(f"\nPausing Until Next Monitoring Run in {self.period} minutes.")
 
     def _check_archive(self, aoi_box: Polygon, period: int, subsription_name: str):   
         # Create the search window in UTC 

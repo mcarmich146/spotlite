@@ -917,8 +917,9 @@ class TileManager:
                     print(f"Exception occurred: {e}")
 
 
-        # merge all the georeferenced previews.
-        mosaic_src, out_trans = merge(src_files_to_mosaic, indexes=[1, 2, 3])
+        with warnings.catch_warnings():
+            warnings.simplefilter('ignore', NotGeoreferencedWarning)
+            mosaic_src, out_trans = merge(src_files_to_mosaic, indexes=[1, 2, 3])
 
         if output_path is not None:
             # Define the metadata for the mosaic
@@ -931,9 +932,10 @@ class TileManager:
                 "count": 3
             })
 
-            # Write the mosaic data to a PNG file
-            with rasterio.open(output_path, "w", **out_meta) as dest:
-                dest.write(mosaic_src)
+            with warnings.catch_warnings():
+                warnings.simplefilter('ignore', NotGeoreferencedWarning)
+                with rasterio.open(output_path, "w", **out_meta) as dest:
+                    dest.write(mosaic_src)
 
         return mosaic_src, out_trans
 
