@@ -115,7 +115,7 @@ class Searcher:
 
         # Return the search results
         return tiles_gdf
-        
+
     def search_archive_for_outcome_id(self, outcome_id: str):
         try:
             # Connect To The Archive
@@ -128,7 +128,7 @@ class Searcher:
 
             items = archive.search(
                 collections=["quickview-visual"],
-                query={"satl:product_name": {"eq": "QUICKVIEW_VISUAL"}, "satl:outcome_id": {"eq":outcome_id}},
+                query={"satl:outcome_id": {"eq":outcome_id}},
             ).item_collection()
 
             if items is None or len(items) == 0:
@@ -150,22 +150,22 @@ class Searcher:
         
     def _connect_to_archive(self):
         try:
-            if self.is_internal_to_satl:
-                logging.debug("Using Internal Archive Access.")
-                archive = Client.open(self.internal_stac_api_url)
-            else:
-                API_KEY_ID = self.key_id
-                API_KEY_SECRET = self.key_secret
-                STAC_API_URL = self.stac_api_url
-                headers = {"authorizationToken": f"Key,Secret {API_KEY_ID},{API_KEY_SECRET}"}
-                
-                logging.debug("Using Credentials Archive Access with headers: %s", headers)
-                archive = Client.open(STAC_API_URL, headers=headers)
-                # Test connection
-                response = requests.get(STAC_API_URL, headers=headers)
-                response.raise_for_status()  # Will raise an HTTPError if the HTTP request returned an unsuccessful status code
-                logging.debug("Connection test successful with status code %s", response.status_code)
             
+            API_KEY_ID = self.key_id
+            API_KEY_SECRET = self.key_secret
+            STAC_API_URL = self.stac_api_url
+            headers = {"authorizationToken": f"Key,Secret {API_KEY_ID},{API_KEY_SECRET}"}
+            
+            logging.debug("Using Credentials Archive Access with headers: %s", headers)
+            archive = Client.open(STAC_API_URL, headers=headers)
+            # Test connection
+            response = requests.get(STAC_API_URL, headers=headers)
+            response.raise_for_status()  # Will raise an HTTPError if the HTTP request returned an unsuccessful status code
+            logging.debug("Connection test successful with status code %s", response.status_code)
+
+            # Print out the available collections.
+            for collection in archive.get_all_collections():
+                logging.debug(f"Collection ID: {collection.id}, Title: {collection.title}")
             return archive
 
         except requests.exceptions.HTTPError as http_err:
@@ -174,21 +174,6 @@ class Searcher:
         except Exception as e:
             logging.error("Error occurred while connecting to archive: %s", e)
             return None
-        # if self.is_internal_to_satl == True:
-        #     logging.debug("Using Internal Archive Access.")
-        #     archive = Client.open(self.internal_stac_api_url)
-        # else:
-        #     API_KEY_ID = self.key_id
-        #     API_KEY_SECRET = self.key_secret
-        #     STAC_API_URL = self.stac_api_url
-        #     logger.debug("Using Credentials Archive Access")
-        #     headers = {"authorizationToken":f"Key,Secret {API_KEY_ID},{API_KEY_SECRET}"}
-        #     logger.debug(f"headers: {headers}")
-            
-        #     archive = Client.open(STAC_API_URL, headers=headers)
-        #     response = requests.get(STAC_API_URL, headers=headers)  # include your auth headers here
-        #     logger.debug(response.status_code)
-        # return archive
 
     # Function to split the date range into two-week chunks
     def _date_range_chunks(self, start_date: str, end_date: str, chunk_size_days=30):
@@ -220,7 +205,7 @@ class Searcher:
                 intersects=aoi,
                 collections=["quickview-visual"],
                 datetime=f"{start_date}/{end_date}",
-                query={"satl:product_name": {"eq": "QUICKVIEW_VISUAL"}},
+                # query={"satl:product_name": {"eq": "QUICKVIEW_VISUAL"}},
             ).item_collection()
 
             logger.debug(f"Search Complete for period: {start_date} to {end_date}!")

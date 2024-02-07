@@ -76,6 +76,8 @@ setup(
         'uritemplate==4.1.1',
         'urllib3==2.0.7',
         'wsproto==1.2.0',
+        'google-api-python-client>=2.114.0',
+        'google_auth_oauthlib>=1.2.0'
     ],
     classifiers=[
         # Choose classifiers: https://pypi.org/classifiers/
