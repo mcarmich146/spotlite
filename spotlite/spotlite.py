@@ -230,6 +230,9 @@ class Spotlite:
         # Loop through the bbox aois and search and append the results to the map.
         logging.info(f"Number of AOIs Entered: {len(aois_list)}.")
 
+        # To store output filenames from all AOIs
+        all_output_filenames: List[str] = []
+
         for index, aoi in enumerate(aois_list):
             logging.info(f"Processing AOI #: {index+1}")
             tiles_gdf, num_tiles, num_captures = self.tile_manager.get_tiles(aoi, start_date, end_date)
@@ -239,9 +242,11 @@ class Spotlite:
                 logging.warning(f"Total Captures: {num_captures}, Total Tiles: {num_tiles}.")
 
                 # Save tiles into a directory for this job with.
-                self.tile_manager.download_tiles(tiles_gdf, output_dir) # tiles_gdf is stored inside searcher after search.
+                output_filenames = self.tile_manager.download_tiles(tiles_gdf, output_dir)  # Assume this returns a list of filenames
+                all_output_filenames.extend(output_filenames)  # Add the filenames to the aggregated list
 
         logging.warning("Tile Download Complete!")
+        return all_output_filenames
 
     # Function to split the date range into two-week chunks
     def _date_range_chunks(self, start_date: str, end_date: str, chunk_size_days=14):

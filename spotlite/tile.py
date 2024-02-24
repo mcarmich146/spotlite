@@ -148,7 +148,7 @@ class TileManager:
 
         return abs_output_animation_filename, fnames
 
-    def download_tiles(self, tiles_gdf, output_dir=None):
+    def download_tiles(self, tiles_gdf, output_dir=None) -> List[str]:
 
         if tiles_gdf is None:
             logger.warning("No Tiles Found When Downloading Tiles.")
@@ -169,9 +169,11 @@ class TileManager:
             directory_name = output_dir
         self._ensure_dir(directory_name)
 
+        output_filenames_list = []
+
         # Go through each tile and write out to the target location
         for index, (outcome_id, group) in enumerate(grouped_items_GPDF):
-            logger.warning(f"Processing Capture Num: {index+1}, Outcome_Id: {outcome_id}")
+            logger.warning(f"Downloading Capture Num: {index+1}, Outcome_Id: {outcome_id}")
             logger.debug(f"Len of Group: {len(group)}")
             
             tile_number = 1
@@ -200,6 +202,7 @@ class TileManager:
                             r.raise_for_status()
                             with open(tile_filename, 'wb') as f:
                                 shutil.copyfileobj(r.raw, f)
+                            output_filenames_list.append(tile_filename)
                     except Exception as e:
                         logger.error(f"Failed to save tile: {e}")
 
@@ -209,7 +212,8 @@ class TileManager:
             self._show_progress_bar(tile_number, len(group))
             print("\n")
         logger.warning("Tile Download Completed.") #add a new line after the progress bar.
-        return True
+        # print(output_filenames_list)
+        return output_filenames_list
 
     def group_by_capture_date(self, gdf: gpd.GeoDataFrame) -> DataFrameGroupBy:
         # Grouping the data by capture_date
