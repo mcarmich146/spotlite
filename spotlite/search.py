@@ -205,7 +205,6 @@ class Searcher:
                 intersects=aoi,
                 collections=["quickview-visual"],
                 datetime=f"{start_date}/{end_date}",
-                # query={"satl:product_name": {"eq": "QUICKVIEW_VISUAL"}},
             ).item_collection()
 
             logger.debug(f"Search Complete for period: {start_date} to {end_date}!")

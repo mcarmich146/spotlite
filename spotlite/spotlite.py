@@ -47,7 +47,7 @@ class Spotlite:
         self._param = value
 
     # Main function to handle searching the archive.
-    def create_tile_stack_animation(self, points: List[Dict[str, float]], width: float, start_date, end_date, save_and_animate=False):
+    def create_tile_stack_animation(self, points: List[Dict[str, float]], width: float, start_date, end_date, save_and_animate=False, period_sec=False):
         # For the list of points create a map with all of the points and bounding boxes on it.
         aois_list, points_list = self.tile_manager.create_aois_from_points(points, width)
         master_map = self.tile_manager.create_folium_map(points_list, aois_list)
@@ -74,6 +74,8 @@ class Spotlite:
                     font = self._get_font()
                     # Save and animate the image capture tiles
                     if save_and_animate == 'y':
+                        if period_sec is not False:
+                            self.tile_manager.period_between_frames = period_sec
                         # Save and animate the tiles
                         result = self.tile_manager.animate_tile_stack(tiles_gdf, aoi, font)
 
@@ -247,6 +249,9 @@ class Spotlite:
 
         logging.warning("Tile Download Complete!")
         return all_output_filenames
+
+    # def get_tiles(self, aoi, start_date, end_date, query_args):
+    #     return True
 
     # Function to split the date range into two-week chunks
     def _date_range_chunks(self, start_date: str, end_date: str, chunk_size_days=14):
